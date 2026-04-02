@@ -1,0 +1,168 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://schemas.maus-tec.com/plugin-api/v1.0.0/plugin-api.json",
+    "title": "EOM Plugin API Descriptor",
+    "description": "Describes the host functions and events available to JSON plugins at a given firmware version. Firmware CI emits the generated core (name + permission only); the SDK overlay adds descriptions, argument types, and event payloads. Both files validate against this schema.",
+    "type": "object",
+    "required": [ "product", "version", "functions", "events" ],
+    "properties": {
+        "$schema": {
+            "type": "string"
+        },
+        "product": {
+            "type": "string",
+            "description": "Product identifier slug (e.g. 'edge-o-matic-3000')",
+            "examples": [ "edge-o-matic-3000", "mercury-1000" ]
+        },
+        "version": {
+            "type": "string",
+            "description": "Firmware version this descriptor was generated from, in semver format",
+            "pattern": "^\\d+\\.\\d+\\.\\d+",
+            "examples": [ "1.3.0", "2.0.0" ]
+        },
+        "functions": {
+            "type": "array",
+            "description": "Host functions callable from JSON plugins via the mt-actions scripting engine",
+            "items": {
+                "$ref": "#/$defs/functionEntry"
+            }
+        },
+        "events": {
+            "type": "array",
+            "description": "Events emitted by the device that plugins may handle in their 'events' block",
+            "items": {
+                "$ref": "#/$defs/eventEntry"
+            }
+        }
+    },
+    "additionalProperties": false,
+    "$defs": {
+        "permission": {
+            "description": "Permission token required to call this function or receive this event. Null means no permission required.",
+            "oneOf": [
+                { "type": "null" },
+                {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$",
+                    "description": "Permission string in 'resource:action' format (e.g. 'ble:write', 'syscfg:read')",
+                    "examples": [ "ble:write", "syscfg:read", "syscfg:write", "arousal:read" ]
+                }
+            ]
+        },
+        "valueType": {
+            "type": "string",
+            "description": "Primitive value type as exposed by the mt-actions scripting engine. 'bytes' maps to MTA_ARG_ARRAY (int32_t[] with values in 0-255 range) and is accepted alongside 'string' by any host function documented as taking bytes.",
+            "enum": [ "int", "float", "string", "bool", "bytes" ]
+        },
+        "argDef": {
+            "type": "object",
+            "description": "A single argument to a host function",
+            "required": [ "name", "type" ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Argument name"
+                },
+                "type": {
+                    "$ref": "#/$defs/valueType",
+                    "description": "Argument type"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of the argument (overlay field)"
+                },
+                "optional": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether the argument may be omitted"
+                }
+            },
+            "additionalProperties": false
+        },
+        "payloadFieldDef": {
+            "type": "object",
+            "description": "A single field in an event payload",
+            "required": [ "name", "type" ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Field name"
+                },
+                "type": {
+                    "$ref": "#/$defs/valueType",
+                    "description": "Field type"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of the payload field (overlay field)"
+                }
+            },
+            "additionalProperties": false
+        },
+        "functionEntry": {
+            "type": "object",
+            "description": "A host function entry. The generated core carries 'name' and 'permission' only; the SDK overlay adds 'description', 'args', and 'returns'.",
+            "required": [ "name", "permission" ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Function name as called from plugin JSON (e.g. 'log', 'bleWrite')"
+                },
+                "permission": {
+                    "$ref": "#/$defs/permission"
+                },
+                "description": {
+                    "type": [ "string", "null" ],
+                    "description": "Human-readable description of what the function does (overlay field)"
+                },
+                "args": {
+                    "description": "Ordered arguments to the function. Null in generated core; populated by overlay.",
+                    "oneOf": [
+                        { "type": "null" },
+                        {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/argDef" }
+                        }
+                    ]
+                },
+                "returns": {
+                    "description": "Return type of the function, written to $_ or the 'to' variable. Null means no return value.",
+                    "oneOf": [
+                        { "type": "null" },
+                        { "$ref": "#/$defs/valueType" }
+                    ]
+                }
+            },
+            "additionalProperties": false
+        },
+        "eventEntry": {
+            "type": "object",
+            "description": "An event entry. The generated core carries 'name' and 'permission' only; the SDK overlay adds 'description' and 'payload'.",
+            "required": [ "name", "permission" ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Event name as used in the plugin JSON 'events' block (e.g. 'tick', 'arousalChange')"
+                },
+                "permission": {
+                    "$ref": "#/$defs/permission"
+                },
+                "description": {
+                    "type": [ "string", "null" ],
+                    "description": "Human-readable description of when the event fires (overlay field)"
+                },
+                "payload": {
+                    "description": "Fields passed to the event handler. Null means no payload. Null in generated core; populated by overlay.",
+                    "oneOf": [
+                        { "type": "null" },
+                        {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/payloadFieldDef" }
+                        }
+                    ]
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}
