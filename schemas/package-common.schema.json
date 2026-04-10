@@ -68,6 +68,40 @@
             }
         },
 
+        "sku": {
+            "type": "string",
+            "description": "A product SKU identifier. Uppercase short code registered in the OTA server and Hub product registry.",
+            "pattern": "^[A-Z][A-Z0-9]{1,15}$",
+            "examples": [ "EOM3K", "M1K", "TRMCTL" ]
+        },
+
+        "platformRef": {
+            "description": "A platform target: either a SKU string or a family shorthand prefixed with '@'. Family shorthands are expanded by tooling (e.g. '@eom' expands to all Edge-o-Matic SKUs).",
+            "oneOf": [
+                { "$ref": "#/$defs/sku" },
+                {
+                    "type": "string",
+                    "pattern": "^@[a-z][a-z0-9-]*$",
+                    "description": "Family shorthand (e.g. '@eom', '@mercury'). Expanded by mt-sdk and Hub at ingest time.",
+                    "examples": [ "@eom", "@mercury" ]
+                }
+            ]
+        },
+
+        "platformsList": {
+            "type": "array",
+            "description": "Target platforms for this artifact. Each entry is a SKU or a '@family' shorthand. An empty array or omission means 'unspecified' (Hub will require confirmation). Use ['@eom', '@mercury'] or similar to declare broad compatibility.",
+            "items": {
+                "$ref": "#/$defs/platformRef"
+            },
+            "uniqueItems": true,
+            "examples": [
+                [ "@eom" ],
+                [ "EOM3K", "TRMCTL" ],
+                [ "@eom", "@mercury" ]
+            ]
+        },
+
         "hubMetadata": {
             "type": "object",
             "description": "Hub distribution metadata. These fields are consumed by the Maus-Tec Hub for indexing, display, and verification. The device ignores them at runtime.",
@@ -116,6 +150,9 @@
                 "signature": {
                     "type": "string",
                     "description": "Base64-encoded signature produced by 'eom-sdk sign'. Verified by Hub on upload; device-side enforcement planned."
+                },
+                "platforms": {
+                    "$ref": "#/$defs/platformsList"
                 }
             },
             "additionalProperties": true

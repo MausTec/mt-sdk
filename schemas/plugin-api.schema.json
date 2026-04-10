@@ -1,18 +1,19 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "$id": "https://schemas.maus-tec.com/plugin-api/v1.0.0/plugin-api.json",
-    "title": "EOM Plugin API Descriptor",
+    "$id": "https://schemas.maus-tec.com/plugin-api/v1.2.0/plugin-api.json",
+    "title": "Plugin API Descriptor",
     "description": "Describes the host functions and events available to JSON plugins at a given firmware version. Firmware CI emits the generated core (name + permission only); the SDK overlay adds descriptions, argument types, and event payloads. Both files validate against this schema.",
     "type": "object",
-    "required": [ "product", "version", "functions", "events" ],
+    "required": [ "sku", "version", "functions", "events" ],
     "properties": {
         "$schema": {
             "type": "string"
         },
-        "product": {
+        "sku": {
             "type": "string",
-            "description": "Product identifier slug (e.g. 'edge-o-matic-3000')",
-            "examples": [ "edge-o-matic-3000", "mercury-1000" ]
+            "description": "Product SKU this API descriptor was generated for. Uppercase alphanumeric, matching the SKU registered in the OTA server and Hub product registry.",
+            "pattern": "^[A-Z][A-Z0-9]{1,15}$",
+            "examples": [ "EOM3K", "M1K", "TRMCTL" ]
         },
         "version": {
             "type": "string",
@@ -69,12 +70,28 @@
                 },
                 "description": {
                     "type": "string",
-                    "description": "Human-readable description of the argument (overlay field)"
+                    "description": "Human-readable description of the argument"
                 },
                 "optional": {
                     "type": "boolean",
                     "default": false,
                     "description": "Whether the argument may be omitted"
+                }
+            },
+            "additionalProperties": false
+        },
+        "returnDef": {
+            "type": "object",
+            "description": "Return value descriptor for a host function",
+            "required": [ "type" ],
+            "properties": {
+                "type": {
+                    "$ref": "#/$defs/valueType",
+                    "description": "Return value type"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of what the return value represents"
                 }
             },
             "additionalProperties": false
@@ -101,22 +118,26 @@
         },
         "functionEntry": {
             "type": "object",
-            "description": "A host function entry. The generated core carries 'name' and 'permission' only; the SDK overlay adds 'description', 'args', and 'returns'.",
+            "description": "A host function entry. The generated core carries 'name' and 'permission' only; the SDK overlay adds 'module', 'description', 'args', and 'returns'.",
             "required": [ "name", "permission" ],
             "properties": {
                 "name": {
                     "type": "string",
                     "description": "Function name as called from plugin JSON (e.g. 'log', 'bleWrite')"
                 },
+                "module": {
+                    "type": "string",
+                    "description": "Documentary grouping for this function (e.g. 'ble', 'config', 'system'). Used by SDK tooling and documentation generators; has no runtime significance."
+                },
                 "permission": {
                     "$ref": "#/$defs/permission"
                 },
                 "description": {
                     "type": [ "string", "null" ],
-                    "description": "Human-readable description of what the function does (overlay field)"
+                    "description": "Human-readable description of what the function does"
                 },
                 "args": {
-                    "description": "Ordered arguments to the function. Null in generated core; populated by overlay.",
+                    "description": "Ordered arguments to the function. Omitted when no arguments are defined.",
                     "oneOf": [
                         { "type": "null" },
                         {
@@ -126,10 +147,10 @@
                     ]
                 },
                 "returns": {
-                    "description": "Return type of the function, written to $_ or the 'to' variable. Null means no return value.",
+                    "description": "Return value of the function, written to $_ or the 'to' variable. Omitted or null when the function has no return value.",
                     "oneOf": [
                         { "type": "null" },
-                        { "$ref": "#/$defs/valueType" }
+                        { "$ref": "#/$defs/returnDef" }
                     ]
                 }
             },
@@ -137,22 +158,26 @@
         },
         "eventEntry": {
             "type": "object",
-            "description": "An event entry. The generated core carries 'name' and 'permission' only; the SDK overlay adds 'description' and 'payload'.",
+            "description": "An event entry. The generated core carries 'name' and 'permission' only; the SDK overlay adds 'module', 'description', and 'payload'.",
             "required": [ "name", "permission" ],
             "properties": {
                 "name": {
                     "type": "string",
                     "description": "Event name as used in the plugin JSON 'events' block (e.g. 'tick', 'arousalChange')"
                 },
+                "module": {
+                    "type": "string",
+                    "description": "Documentary grouping for this event (e.g. 'ble', 'arousal', 'system'). Used by SDK tooling and documentation generators; has no runtime significance."
+                },
                 "permission": {
                     "$ref": "#/$defs/permission"
                 },
                 "description": {
                     "type": [ "string", "null" ],
-                    "description": "Human-readable description of when the event fires (overlay field)"
+                    "description": "Human-readable description of when the event fires"
                 },
                 "payload": {
-                    "description": "Fields passed to the event handler. Null means no payload. Null in generated core; populated by overlay.",
+                    "description": "Fields passed to the event handler. Omitted or null when there is no payload.",
                     "oneOf": [
                         { "type": "null" },
                         {
