@@ -1,53 +1,12 @@
-// Core types shared across all modules
-
-/** Describes a host function available in the firmware runtime. */
-export interface HostFunctionDescriptor {
-  name: string;
-  permission: string | null;
-  description?: string;
-  args?: ArgDescriptor[];
-  returns?: string | null;
-}
-
-/** Describes an event emitted by the firmware. */
-export interface EventDescriptor {
-  name: string;
-  permission: string | null;
-  description?: string;
-  payload?: PayloadField[];
-}
-
-/** Describes a function argument. */
-export interface ArgDescriptor {
-  name: string;
-  type: "int" | "float" | "string" | "bool" | "bytes";
-  description?: string;
-  optional?: boolean;
-}
-
-/** Describes an event payload field. */
-export interface PayloadField {
-  name: string;
-  type: "int" | "float" | "string" | "bool" | "bytes";
-  description?: string;
-}
-
-/** Runtime manifest shipped in @maustec/mt-runtime-* packages. */
-export interface RuntimeManifest {
-  product: string;
-  version: string;
-  events: EventDescriptor[];
-  hostFunctions: HostFunctionDescriptor[];
-  builtins: string[];
-  permissions: string[];
-}
-
-/** A loaded runtime pack (WASM binary + manifest + schema). */
-export interface RuntimePack {
-  wasm: ArrayBuffer;
-  manifest: RuntimeManifest;
-  schema: Record<string, unknown>;
-}
+// Re-export shared firmware API types from mt-runtimes as the canonical source.
+import type { ApiDescriptor } from "@maustec/mt-runtimes";
+export type {
+  ApiDescriptor,
+  EventDescriptor,
+  HostFunctionDescriptor,
+  ArgDescriptor,
+  PayloadField,
+} from "@maustec/mt-runtimes";
 
 /** Diagnostic from validation. */
 export interface Diagnostic {
@@ -67,7 +26,7 @@ export interface ValidationResult {
 /** Options for validation. */
 export interface ValidateOptions {
   plugin: Record<string, unknown>;
-  manifest?: RuntimeManifest | undefined;
+  manifest?: ApiDescriptor | undefined;
   schema?: Record<string, unknown> | undefined;
   strict?: boolean | undefined;
 }
@@ -132,8 +91,8 @@ export interface HostStubContext {
 
 /** Opaque handle to a loaded WASM runtime. */
 export interface LoadedRuntime {
-  manifest: RuntimeManifest;
-  // Internal WASM instance — not part of public API
+  manifest: ApiDescriptor;
+  // Internal WASM instance - not part of public API
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _instance?: any;
 }

@@ -1,7 +1,7 @@
 {
   "name": "@maustec/mt-sdk",
   "version": "0.1.0",
-  "description": "Maus-Tec plugin SDK — validate, simulate, and build plugins for Maus-Tec hardware",
+  "description": "Maus-Tec plugin SDK: validate, simulate, and build plugins for Maus-Tec hardware",
   "type": "module",
   "exports": {
     ".": {
@@ -24,7 +24,13 @@
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build"
   },
-  "keywords": [ "maustec", "plugin", "sdk", "wasm", "iot" ],
+  "keywords": [
+    "maustec",
+    "plugin",
+    "sdk",
+    "wasm",
+    "iot"
+  ],
   "author": "Maus-Tec LLC",
   "license": "MIT",
   "repository": {
@@ -44,6 +50,7 @@
     "vitest": "^4.1.2"
   },
   "dependencies": {
+    "@maustec/mt-runtimes": "file:../mt-runtimes",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1"
   }

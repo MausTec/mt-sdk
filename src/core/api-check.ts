@@ -1,20 +1,20 @@
-import type { Diagnostic, RuntimeManifest } from "./types.js";
+import type { Diagnostic, ApiDescriptor } from "./types.js";
 import { collectHostFunctionCalls, collectEventSubscriptions } from "./action-walker.js";
 
 /**
- * Tier 3 validation: cross-reference plugin against the firmware runtime manifest.
+ * Tier 3 validation: cross-reference plugin against a firmware API descriptor.
  * Checks that events and host functions actually exist, and that required
  * permissions are declared.
  */
 export function apiCheck(
   plugin: Record<string, unknown>,
-  manifest: RuntimeManifest,
+  manifest: ApiDescriptor,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
   // Build lookup maps from manifest
   const knownEvents = new Map(manifest.events.map((e) => [e.name, e]));
-  const knownFunctions = new Map(manifest.hostFunctions.map((f) => [f.name, f]));
+  const knownFunctions = new Map(manifest.functions.map((f) => [f.name, f]));
   const declaredPermissions = new Set(
     Array.isArray(plugin["permissions"]) ? (plugin["permissions"] as string[]) : [],
   );
@@ -28,7 +28,7 @@ export function apiCheck(
         tier: "api",
         level: "warning",
         path: `events.${evName}`,
-        message: `Event "${evName}" is not defined in ${manifest.product} v${manifest.version}`,
+        message: `Event "${evName}" is not defined in ${manifest.sku} v${manifest.version}`,
       });
       continue;
     }
@@ -51,7 +51,7 @@ export function apiCheck(
       diagnostics.push({
         tier: "api",
         level: "warning",
-        message: `Host function "${fnName}" is not defined in ${manifest.product} v${manifest.version}`,
+        message: `Host function "${fnName}" is not defined in ${manifest.sku} v${manifest.version}`,
       });
       continue;
     }

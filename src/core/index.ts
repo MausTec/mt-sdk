@@ -4,3 +4,11 @@ export { collectHostFunctionCalls, collectEventSubscriptions } from "./action-wa
 export { structuralCheck } from "./structural.js";
 export { schemaCheck } from "./schema.js";
 export { apiCheck } from "./api-check.js";
+export {
+  resolvePlatformRef,
+  resolvePlatforms,
+  platformMatches,
+  allKnownSkus,
+  allFamilyAliases,
+  familyForSku,
+} from "./platforms.js";

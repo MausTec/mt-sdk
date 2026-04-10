@@ -139,8 +139,10 @@ export function structuralCheck(
   if (plugin["events"] != null && typeof plugin["events"] === "object") {
     const events = plugin["events"] as Record<string, unknown>;
     for (const [evName, evDef] of Object.entries(events)) {
+      // Accept shorthand: bare array is the actions list
+      if (Array.isArray(evDef)) continue;
       if (evDef == null || typeof evDef !== "object") {
-        error(`Event "${evName}" must be an object`, `events.${evName}`);
+        error(`Event "${evName}" must be an array or object`, `events.${evName}`);
         continue;
       }
       const def = evDef as Record<string, unknown>;

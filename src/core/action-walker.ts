@@ -7,23 +7,30 @@
  * Given that the Typescript implementation of this library is set to use the compiled
  * WASM module for runtime validation, this static analysis is only used for linting and 
  * editor feedback. It is not an execution layer, and does not need to be perfectly 
- * accurate — just good enough to catch common mistakes and provide helpful warnings.
+ * accurate - just good enough to catch common mistakes and provide helpful warnings.
  * 
  */
 
-// DSL control-flow keys — not host function calls
+// DSL control-flow keys and result-store modifiers - not host function calls
 const CONTROL_FLOW_KEYS = new Set([
   "if", "while", "then", "else", "all", "any",
   "eq", "neq", "gt", "lt", "gte", "lte",
   "not", "and", "or",
+  // Result-store modifier: {funcName: args, "to": "$var"}
+  "to",
+  // Control-flow exit from a user function: {"return": value}
+  "return",
 ]);
 
-// DSL built-in functions — not host function calls
+// DSL built-in functions (registered by mta_init_builtins()) - not host function calls.
+// NOTE: "set" and "vars" are intentionally excluded here; they have special key-skipping
+// logic below because their value-objects use keys as variable names, not function calls.
 const BUILTIN_KEYS = new Set([
-  "set", "add", "sub", "mul", "div", "mod",
+  "add", "sub", "mul", "div", "mod",
   "inc", "dec", "concat", "substr", "strlen",
   "charat", "getbyte", "setbyte", "strcmp",
-  "vars", "actions",
+  "round", "chr", "toString",
+  "actions",
 ]);
 
 const HOST_FN_RE = /^[a-zA-Z_]\w*$/;
@@ -56,14 +63,22 @@ function scanActions(obj: unknown, out: Set<string>): void {
 
     // Skip variable references ($var) and user function calls (@fn)
     if (key.startsWith("$") || key.startsWith("@")) {
-      scanActions(value, out);
+      if (key.startsWith("@") && value != null && typeof value === "object" && !Array.isArray(value)) {
+        // Named-argument object: keys are parameter names, not host function calls.
+        // Scan only the argument values.
+        for (const v of Object.values(value as Record<string, unknown>)) {
+          scanActions(v, out);
+        }
+      } else {
+        scanActions(value, out);
+      }
       continue;
     }
 
     // Skip structural keys used inside "set" and "vars"
     // These are handled by their parent context
     if (key === "set" || key === "vars") {
-      // Don't descend into value keys — they're variable names, not functions
+      // Don't descend into value keys - they're variable names, not functions
       if (value != null && typeof value === "object" && !Array.isArray(value)) {
         for (const v of Object.values(value as Record<string, unknown>)) {
           scanActions(v, out);
@@ -102,10 +117,13 @@ export function collectHostFunctionCalls(
     }
   }
 
-  // Scan events
+  // Scan events - accepts both bare-array shorthand and {actions: [...]} object form
   if (plugin["events"] != null && typeof plugin["events"] === "object") {
     for (const evDef of Object.values(plugin["events"] as Record<string, unknown>)) {
-      if (evDef != null && typeof evDef === "object") {
+      if (Array.isArray(evDef)) {
+        // Shorthand: the array is the actions list directly
+        scanActions(evDef, calls);
+      } else if (evDef != null && typeof evDef === "object") {
         const def = evDef as Record<string, unknown>;
         scanActions(def["actions"], calls);
       }
