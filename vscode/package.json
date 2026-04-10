@@ -1,0 +1,30 @@
+{
+    "name": "maus-tec-plugin-syntax",
+    "displayName": "Maus-Tec Plugin Syntax",
+    "description": "Language support for .mtp Maus-Tec plugin source files.",
+    "version": "1.0.0",
+    "publisher": "maus-tec",
+    "engines": { "vscode": "^1.75.0" },
+    "categories": [ "Programming Languages" ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "mtp",
+                "aliases": [ "Maus-Tec Plugin", "mtp" ],
+                "extensions": [ ".mtp" ],
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "light": "./icons/mtp-light.svg",
+                    "dark": "./icons/mtp-dark.svg"
+                }
+            }
+        ],
+        "grammars": [
+            {
+                "language": "mtp",
+                "scopeName": "source.mtp",
+                "path": "./syntaxes/mtp.tmLanguage.json"
+            }
+        ]
+    }
+}

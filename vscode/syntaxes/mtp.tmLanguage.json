@@ -1,0 +1,214 @@
+{
+    "name": "mt-actions Plugin Language",
+    "scopeName": "source.mtp",
+    "fileTypes": [ "mtp" ],
+    "patterns": [
+        { "include": "#comment" },
+        { "include": "#string" },
+        { "include": "#fn-pure" },
+        { "include": "#fn-block" },
+        { "include": "#on-handler" },
+        { "include": "#def-keywords" },
+        { "include": "#block-names" },
+        { "include": "#control-keywords" },
+        { "include": "#types-with-name" },
+        { "include": "#number" },
+        { "include": "#boolean" },
+        { "include": "#atom" },
+        { "include": "#special-vars" },
+        { "include": "#global-var" },
+        { "include": "#config-ref" },
+        { "include": "#operators" },
+        { "include": "#kwarg-key" },
+        { "include": "#meta-key" },
+        { "include": "#function-call" }
+    ],
+    "repository": {
+        "comment": {
+            "name": "comment.line.number-sign.mtp",
+            "match": "#.*$"
+        },
+
+        "string": {
+            "name": "string.quoted.double.mtp",
+            "begin": "\"",
+            "end": "\"",
+            "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.mtp" } },
+            "endCaptures": { "0": { "name": "punctuation.definition.string.end.mtp" } },
+            "patterns": [
+                { "name": "constant.character.escape.mtp", "match": "\\\\." }
+            ]
+        },
+
+        "fn-pure": {
+            "comment": "fn name = (type arg) -> expr  - pure single-expression function",
+            "match": "\\b(fn)\\s+(\\w+)\\s*(=)",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "entity.name.function.mtp" },
+                "3": { "name": "keyword.operator.assignment.mtp" }
+            }
+        },
+
+        "fn-block": {
+            "comment": "def name(args) do  - effectful multi-statement function",
+            "match": "\\b(def)\\s+(\\w+)\\s*(?=\\()",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "entity.name.function.mtp" }
+            }
+        },
+
+        "on-handler": {
+            "comment": "on :event do",
+            "match": "\\b(on)\\s+(:\\w+)",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "entity.name.type.event.mtp" }
+            }
+        },
+
+        "def-keywords": {
+            "comment": "Module-level definition and import keywords",
+            "match": "\\b(defplugin|defmodule|import|alias)\\b",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" }
+            }
+        },
+
+        "block-names": {
+            "comment": "Block delimiters and declaration block names",
+            "match": "\\b(do|end|config|globals|match|vars)\\b",
+            "captures": {
+                "1": { "name": "keyword.control.block.mtp" }
+            }
+        },
+
+        "control-keywords": {
+            "comment": "Control flow and explicit global mutation",
+            "match": "\\b(if|else|unless|return|set)\\b",
+            "captures": {
+                "1": { "name": "keyword.control.mtp" }
+            }
+        },
+
+        "types-with-name": {
+            "comment": "type identifier - var decls in globals, config, and fn/event bodies",
+            "match": "\\b(int|bool|string)\\s+(\\w+)\\b",
+            "captures": {
+                "1": { "name": "storage.type.mtp" },
+                "2": { "name": "variable.parameter.mtp" }
+            }
+        },
+
+        "number": {
+            "name": "constant.numeric.mtp",
+            "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
+        },
+
+        "boolean": {
+            "name": "constant.language.boolean.mtp",
+            "match": "\\b(true|false)\\b"
+        },
+
+        "atom": {
+            "comment": ":symbol - event names and symbolic values. Negative lookbehind avoids matching inside strings or after word chars.",
+            "match": "(?<![\\w\"']):\\w+",
+            "name": "constant.other.atom.mtp"
+        },
+
+        "special-vars": {
+            "comment": "$_ pipe accumulator and $! error code - language-level variables",
+            "match": "\\$[_!](?!\\w)",
+            "name": "variable.language.mtp"
+        },
+
+        "global-var": {
+            "comment": "$name - plugin global variable (read or assign)",
+            "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*",
+            "name": "variable.other.global.mtp"
+        },
+
+        "config-ref": {
+            "comment": "@name - config value read (read-only)",
+            "match": "@[a-zA-Z_][a-zA-Z0-9_]*",
+            "name": "support.variable.config.mtp"
+        },
+
+        "operators": {
+            "patterns": [
+                {
+                    "comment": "|> pipe operator",
+                    "name": "keyword.operator.pipe.mtpl",
+                    "match": "\\|>"
+                },
+                {
+                    "comment": "-> pure-fn body separator",
+                    "name": "keyword.operator.arrow.mtpl",
+                    "match": "->"
+                },
+                {
+                    "comment": "<> string concatenation",
+                    "name": "keyword.operator.concat.mtpl",
+                    "match": "<>"
+                },
+                {
+                    "comment": "Comparison operators - must precede single = and arithmetic -/<",
+                    "name": "keyword.operator.comparison.mtpl",
+                    "match": "==|!=|>=|<="
+                },
+                {
+                    "comment": "Single-char comparisons - after the two-char forms",
+                    "name": "keyword.operator.comparison.mtpl",
+                    "match": "(?<![=!<>])[><](?!=)"
+                },
+                {
+                    "comment": "Arithmetic operators",
+                    "name": "keyword.operator.arithmetic.mtpl",
+                    "match": "[+\\-*\\/]"
+                },
+                {
+                    "comment": "Assignment = - not preceded or followed by = ! < >",
+                    "name": "keyword.operator.assignment.mtpl",
+                    "match": "(?<![=!<>])=(?!=)"
+                }
+            ]
+        },
+
+        "meta-key": {
+            "comment": "Known metadata keys in the defplugin and match blocks",
+            "match": "^\\s*(version|sdk|description|author|license|repository|platform|permissions|type|ble_name_prefix|ble_name|vid|pid|serial)(?=\\s)",
+            "captures": {
+                "1": { "name": "support.type.property-name.mtp" }
+            }
+        },
+
+        "function-call": {
+            "comment": "Bare identifier used as a function call - followed by ( or a non-operator argument",
+            "patterns": [
+                {
+                    "comment": "name(...) - explicit call with parens",
+                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*\\()",
+                    "captures": {
+                        "1": { "name": "entity.name.function.call.mtp" }
+                    }
+                },
+                {
+                    "comment": "name \"arg\" or name @ref or name $var - paren-free single-arg call at statement level",
+                    "match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s+[\"@$])",
+                    "captures": {
+                        "1": { "name": "entity.name.function.call.mtp" }
+                    }
+                }
+            ]
+        },
+
+        "kwarg-key": {
+            "comment": "key: value - constraint kwargs in config (min: max:) and match fields",
+            "match": "\\b(\\w+):\\s",
+            "captures": {
+                "1": { "name": "entity.other.attribute-name.mtp" }
+            }
+        }
+    }
+}
