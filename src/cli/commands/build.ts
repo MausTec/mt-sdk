@@ -1,6 +1,8 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { info, warn } from "../output.js";
+import { info, warn, error, success, dim } from "../output.js";
+import { transpile } from "../../lang/index.js";
+import type { LangDiagnostic } from "../../lang/index.js";
 
 type ProjectType = "app" | "json-plugin" | "mtp-plugin" | "monorepo" | "unknown";
 
@@ -26,6 +28,46 @@ function detectProjectType(cwd: string): ProjectType {
   return "unknown";
 }
 
+function buildPlugin(cwd: string): void {
+  const mtpFile = readdirSync(cwd).find((f) => f.endsWith(".mtp"));
+
+  if (!mtpFile) {
+    error("No .mtp file found in current directory.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const filePath = join(cwd, mtpFile);
+  info(`Transpiling ${mtpFile}…`);
+
+  const source = readFileSync(filePath, "utf8");
+  const { plugin, diagnostics } = transpile(source);
+
+  // Emit diagnostics
+  for (const diag of diagnostics) {
+    const loc = diag.span
+      ? dim(` (${diag.span.line}:${diag.span.col})`)
+      : "";
+    if (diag.level === "error") {
+      error(`${diag.message}${loc}`);
+    } else {
+      warn(`${diag.message}${loc}`);
+    }
+  }
+
+  const errors = diagnostics.filter((d: LangDiagnostic) => d.level === "error");
+
+  if (errors.length > 0) {
+    error(`Transpilation failed with ${errors.length} error(s).`);
+    console.log(JSON.stringify(plugin, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+
+  success("Transpilation complete. Output:");
+  console.log(JSON.stringify(plugin, null, 2));
+}
+
 export async function buildCommand(argv: string[]): Promise<void> {
   const cwd = process.cwd();
   const type = detectProjectType(cwd);
@@ -38,7 +80,7 @@ export async function buildCommand(argv: string[]): Promise<void> {
       info("JSON Plugin detected — nothing to build.");
       break;
     case "mtp-plugin":
-      info("MTP Plugin detected — will transpile MTP Plugin to JSON. (not yet implemented)");
+      buildPlugin(cwd);
       break;
     case "monorepo":
       info("Monorepo detected — will build all projects. (not yet implemented)");
