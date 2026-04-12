@@ -10,7 +10,8 @@
     }
   },
   "bin": {
-    "mt-sdk": "./dist/bin/mt-sdk.js"
+    "mt-sdk": "./dist/bin/mt-sdk.js",
+    "mt-sdk-lsp": "./dist/bin/mt-sdk-lsp.js"
   },
   "files": [
     "dist",
@@ -52,6 +53,8 @@
   "dependencies": {
     "@maustec/mt-runtimes": "file:../mt-runtimes",
     "ajv": "^8.18.0",
-    "ajv-formats": "^3.0.1"
+    "ajv-formats": "^3.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
   }
 }
