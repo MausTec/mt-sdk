@@ -5,33 +5,59 @@ import type { DocumentStore } from "./document-store.js";
 /**
  * Build completion items for a given document URI.
  *
- * Currently provides:
- * - `@name` completions for every declared config variable in the document.
- *   Triggered when the user types `@`.
+ * Provides:
+ * - `@name` items for every declared config variable (trigger: `@`)
+ * - `$name` items for every declared global variable (trigger: `$`)
+ *
+ * When `triggerCharacter` is provided, only the matching sigil's items are
+ * returned — this prevents both lists from appearing when the user types one
+ * sigil and accidentally inserting the wrong one.
  */
 export function getCompletionItems(
   store: DocumentStore,
   uri: string,
+  triggerCharacter?: string,
 ): CompletionItem[] {
   const doc = store.get(uri);
   if (doc === undefined) return [];
 
   const { ast } = doc.parsed;
-  if (ast.configBlock === null) return [];
+  const items: CompletionItem[] = [];
 
-  return ast.configBlock.declarations.map((decl) => {
-    const item: CompletionItem = {
-      label: `@${decl.name}`,
-      kind: CompletionItemKind.Variable,
-      detail: decl.varType,
-      // Strip the `@` that the user already typed (triggerCharacter was `@`)
-      insertText: decl.name,
-    };
+  const includeConfig = triggerCharacter === undefined || triggerCharacter === "@";
+  const includeGlobals = triggerCharacter === undefined || triggerCharacter === "$";
 
-    if (decl.label !== null) {
-      item.documentation = decl.label;
+  if (includeConfig && ast.configBlock !== null) {
+    for (const decl of ast.configBlock.declarations) {
+      const item: CompletionItem = {
+        label: `@${decl.name}`,
+        kind: CompletionItemKind.Variable,
+        detail: decl.varType,
+        insertText: decl.name,
+      };
+
+      if (decl.label !== null) {
+        item.documentation = decl.label;
+      }
+
+      items.push(item);
     }
+  }
 
-    return item;
-  });
+  if (includeGlobals && ast.globalsBlock !== null) {
+    for (const decl of ast.globalsBlock.declarations) {
+      const typeLabel = decl.arraySize !== null
+        ? `${decl.varType}[${decl.arraySize}]`
+        : decl.varType;
+
+      items.push({
+        label: `$${decl.name}`,
+        kind: CompletionItemKind.Variable,
+        detail: typeLabel,
+        insertText: decl.name,
+      });
+    }
+  }
+
+  return items;
 }

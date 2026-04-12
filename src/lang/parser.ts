@@ -1,6 +1,6 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, VarType } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, VarType } from "./ast.js";
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -37,7 +37,6 @@ function emptyPlugin(span: Span): PluginNode {
  */
 const SKIP_BLOCK_STARTERS = new Set<TokenKind>([
   TokenKind.Match,
-  TokenKind.Globals,
   TokenKind.Def,
   TokenKind.On,
 ]);
@@ -158,6 +157,13 @@ class Parser {
         continue;
       }
 
+      // Globals block
+      if (this.check(TokenKind.Globals)) {
+        result.globalsBlock = this.parseGlobalsBlock();
+        this.skipTrivia();
+        continue;
+      }
+
       // Other sub-blocks with do...end are skipped for now
       if (SKIP_BLOCK_STARTERS.has(this.peek().kind)) {
         this.skipDoBlock();
@@ -191,6 +197,90 @@ class Parser {
     result.span = mergeSpan(defToken.span, endToken?.span ?? defToken.span);
 
     return result;
+  }
+
+  // --- Globals block ---------------------------------------------------------
+
+  private parseGlobalsBlock(): GlobalsBlockNode {
+    const kwToken = this.advance(); // consume `globals`
+    this.expect(TokenKind.Do, "after `globals`");
+    this.skipInlineComment();
+
+    const declarations: GlobalDecl[] = [];
+
+    while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
+      this.skipTrivia();
+
+      if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
+
+      if (TYPE_KEYWORDS.has(this.peek().kind)) {
+        const decl = this.parseGlobalDecl();
+        if (decl) declarations.push(decl);
+        continue;
+      }
+
+      const t = this.advance();
+      this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in globals block`, t.span));
+    }
+
+    const endToken = this.eat(TokenKind.End);
+
+    return {
+      kind: "GlobalsBlock",
+      span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
+      declarations,
+    };
+  }
+
+  private parseGlobalDecl(): GlobalDecl | null {
+    const typeToken = this.advance();
+    const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
+
+    // Optional array size: `int[4] name`
+    let arraySize: number | null = null;
+
+    if (this.check(TokenKind.LBracket)) {
+      this.advance();
+      const sizeToken = this.peek();
+
+      if (sizeToken.kind === TokenKind.Integer) {
+        arraySize = parseInt(sizeToken.value, 10);
+        this.advance();
+      } else {
+        this.diagnostics.push(langError("Expected integer array size", sizeToken.span));
+      }
+
+      this.expect(TokenKind.RBracket, "after array size");
+    }
+
+    if (!this.check(TokenKind.Identifier)) {
+      this.diagnostics.push(langError("Expected identifier in globals declaration", this.peek().span));
+      this.skipToNextLine();
+
+      return null;
+    }
+
+    const nameToken = this.advance();
+
+    this.expect(TokenKind.Assign, `after global name \`${nameToken.value}\``);
+
+    const initExpr = this.parseScalarValue();
+    
+    if (!initExpr) {
+      this.diagnostics.push(langError(`Expected initializer for global \`${nameToken.value}\``, this.peek().span));
+      this.skipToNextLine();
+
+      return null;
+    }
+
+    return {
+      kind: "GlobalDecl",
+      span: mergeSpan(typeToken.span, initExpr.span),
+      varType,
+      name: nameToken.value,
+      arraySize,
+      init: initExpr,
+    };
   }
 
   // --- Config block ----------------------------------------------------------

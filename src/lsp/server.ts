@@ -21,7 +21,7 @@ export function startServer(): void {
         },
 
         // Capabilities are added here as each feature is implemented.
-        completionProvider: { triggerCharacters: ["@"] },
+        completionProvider: { triggerCharacters: ["@", "$"] },
         // hoverProvider: true,
       },
       serverInfo: {
@@ -53,8 +53,8 @@ export function startServer(): void {
 
   // --- Completion ------------------------------------------------------------
 
-  connection.onCompletion(({ textDocument }) => {
-    return getCompletionItems(store, textDocument.uri);
+  connection.onCompletion(({ textDocument, context }) => {
+    return getCompletionItems(store, textDocument.uri, context?.triggerCharacter ?? undefined);
   });
 
   connection.listen();

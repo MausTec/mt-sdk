@@ -1,4 +1,4 @@
-import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, Expr } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, Expr } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
 
@@ -83,6 +83,10 @@ class Emitter {
       plugin["config"] = this.emitConfigBlock(ast.configBlock);
     }
 
+    if (ast.globalsBlock !== null) {
+      plugin["globals"] = this.emitGlobalsBlock(ast.globalsBlock);
+    }
+
     return { plugin, diagnostics: this.diagnostics };
   }
 
@@ -108,6 +112,29 @@ class Emitter {
 
     for (const [key, expr] of Object.entries(decl.constraints)) {
       entry[key] = exprToJson(expr);
+    }
+
+    return entry;
+  }
+
+  private emitGlobalsBlock(block: GlobalsBlockNode): Record<string, unknown> {
+    const globals: Record<string, unknown> = {};
+
+    for (const decl of block.declarations) {
+      globals[decl.name] = this.emitGlobalDecl(decl);
+    }
+
+    return globals;
+  }
+
+  private emitGlobalDecl(decl: GlobalDecl): Record<string, unknown> {
+    const entry: Record<string, unknown> = {
+      type: decl.varType,
+      init: exprToJson(decl.init),
+    };
+
+    if (decl.arraySize !== null) {
+      entry["arraySize"] = decl.arraySize;
     }
 
     return entry;
