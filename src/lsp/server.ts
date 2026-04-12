@@ -3,6 +3,7 @@ import type { InitializeResult } from "vscode-languageserver/node.js";
 import { createConnection, ProposedFeatures } from "vscode-languageserver/node.js";
 import { DocumentStore } from "./document-store.js";
 import { publishDiagnostics } from "./diagnostics.js";
+import { getCompletionItems } from "./completion.js";
 
 /**
  * Start the mt-sdk language server.
@@ -20,7 +21,7 @@ export function startServer(): void {
         },
 
         // Capabilities are added here as each feature is implemented.
-        // completionProvider: { triggerCharacters: [] },
+        completionProvider: { triggerCharacters: ["@"] },
         // hoverProvider: true,
       },
       serverInfo: {
@@ -48,6 +49,12 @@ export function startServer(): void {
     store.close(textDocument.uri);
     // Clear diagnostics when the document is closed.
     connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+  });
+
+  // --- Completion ------------------------------------------------------------
+
+  connection.onCompletion(({ textDocument }) => {
+    return getCompletionItems(store, textDocument.uri);
   });
 
   connection.listen();

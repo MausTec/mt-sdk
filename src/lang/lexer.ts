@@ -260,10 +260,22 @@ class Lexer {
       case "]": kind = TokenKind.RBracket;  break;
       case ",": kind = TokenKind.Comma;     break;
       case "=": kind = TokenKind.Assign;    break;
+      case ":":
+        // `:name` (no space) → Atom;  bare `:` → Colon (kwarg separator)
+        if (isIdentStart(this.peek(1))) {
+          this.advance(); // consume `:`
+          let atomName = "";
+          while (isIdentCont(this.peek())) atomName += this.advance();
+          this.push(TokenKind.Atom, atomName, start);
+        } else {
+          this.advance();
+          this.push(TokenKind.Colon, ":", start);
+        }
+        return true;
     }
 
     if (kind === null) return false;
-    
+
     this.advance();
     this.push(kind, ch, start);
 

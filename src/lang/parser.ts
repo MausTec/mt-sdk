@@ -1,6 +1,6 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, VarType } from "./ast.js";
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -31,15 +31,21 @@ function emptyPlugin(span: Span): PluginNode {
 }
 
 /**
- * Block-opening keywords inside `defplugin` that have their own `do...end`.
- * `fn` is absent because it is a single-line form with no `do`.
+ * Block-opening keywords inside `defplugin` that have their own `do...end`
+ * They are skipped until a parser method exists for them.
+ * Remove a kind from this set when a dedicated parse method is added for it.
  */
-const DO_BLOCK_STARTERS = new Set<TokenKind>([
+const SKIP_BLOCK_STARTERS = new Set<TokenKind>([
   TokenKind.Match,
-  TokenKind.Config,
   TokenKind.Globals,
   TokenKind.Def,
   TokenKind.On,
+]);
+
+const TYPE_KEYWORDS = new Map<TokenKind, VarType>([
+  [TokenKind.TypeInt,    "int"],
+  [TokenKind.TypeBool,   "bool"],
+  [TokenKind.TypeString, "string"],
 ]);
 
 // --- Parser class -------------------------------------------------------------
@@ -100,6 +106,11 @@ class Parser {
     }
   }
 
+  /** Skip only newlines, leaving comment tokens in the stream. */
+  private skipNewlines(): void {
+    while (this.check(TokenKind.Newline)) this.advance();
+  }
+
   /** Skip a trailing inline comment, but not the newline itself. */
   private skipInlineComment(): void {
     this.eat(TokenKind.Comment);
@@ -123,11 +134,32 @@ class Parser {
     this.skipInlineComment();
 
     const metadata: MetadataFieldNode[] = [];
+
+    const result: PluginNode = {
+      kind: "Plugin",
+      span: defToken.span, // updated at end
+      displayName,
+      metadata,
+      matchBlock: null,
+      configBlock: null,
+      globalsBlock: null,
+      functions: [],
+      defs: [],
+      handlers: [],
+    };
+
     this.skipTrivia();
 
     while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
-      // Sub-blocks with do...end
-      if (DO_BLOCK_STARTERS.has(this.peek().kind)) {
+      // Config block
+      if (this.check(TokenKind.Config)) {
+        result.configBlock = this.parseConfigBlock();
+        this.skipTrivia();
+        continue;
+      }
+
+      // Other sub-blocks with do...end are skipped for now
+      if (SKIP_BLOCK_STARTERS.has(this.peek().kind)) {
         this.skipDoBlock();
         this.skipTrivia();
         continue;
@@ -156,18 +188,106 @@ class Parser {
     }
 
     const endToken = this.eat(TokenKind.End);
+    result.span = mergeSpan(defToken.span, endToken?.span ?? defToken.span);
+
+    return result;
+  }
+
+  // --- Config block ----------------------------------------------------------
+
+  private parseConfigBlock(): ConfigBlockNode {
+    const kwToken = this.advance(); // consume `config`
+    this.expect(TokenKind.Do, "after `config`");
+    this.skipInlineComment();
+
+    const declarations: ConfigDecl[] = [];
+    let pendingLabel: string | null = null;
+
+    // Inside a config block we manage trivia manually so that a `# comment`
+    // immediately above a declaration is captured as its label.
+    // TODO: Expand this to include multi-line doc comments
+    while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
+      this.skipNewlines();
+
+      if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
+
+      // A comment on its own line becomes the label for the next declaration.
+      if (this.check(TokenKind.Comment)) {
+        pendingLabel = this.advance().value;
+        continue;
+      }
+
+      // Type keyword starts a declaration.
+      if (TYPE_KEYWORDS.has(this.peek().kind)) {
+        const decl = this.parseConfigDecl(pendingLabel);
+        if (decl) declarations.push(decl);
+        pendingLabel = null;
+        continue;
+      }
+
+      // Anything else is unexpected, skip
+      const t = this.advance();
+      this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in config block`, t.span));
+      pendingLabel = null;
+    }
+
+    const endToken = this.eat(TokenKind.End);
 
     return {
-      kind: "Plugin",
-      span: mergeSpan(defToken.span, endToken?.span ?? defToken.span),
-      displayName,
-      metadata,
-      matchBlock: null,
-      configBlock: null,
-      globalsBlock: null,
-      functions: [],
-      defs: [],
-      handlers: [],
+      kind: "ConfigBlock",
+      span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
+      declarations,
+    };
+  }
+
+  private parseConfigDecl(label: string | null): ConfigDecl | null {
+    const typeToken = this.advance();
+    const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
+
+    if (!this.check(TokenKind.Identifier)) {
+      this.diagnostics.push(langError("Expected identifier after type in config declaration", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    const nameToken = this.advance();
+    this.expect(TokenKind.Assign, `after config name \`${nameToken.value}\``);
+
+    const defaultExpr = this.parseScalarValue();
+    if (!defaultExpr) {
+      this.diagnostics.push(langError(`Expected default value for config \`${nameToken.value}\``, this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    // Optional trailing kwargs: `, key: value, key: value`
+    const constraints: Record<string, Expr> = {};
+    while (this.check(TokenKind.Comma)) {
+      this.advance(); // consume `,`
+
+      if (!this.check(TokenKind.Identifier)) break;
+      const kwKey = this.advance().value;
+
+      this.expect(TokenKind.Colon, `after constraint key \`${kwKey}\``);
+
+      const kwVal = this.parseScalarValue();
+      if (!kwVal) {
+        this.diagnostics.push(langError(`Expected value for constraint \`${kwKey}\``, this.peek().span));
+        break;
+      }
+      constraints[kwKey] = kwVal;
+    }
+
+    const lastSpan = Object.values(constraints).at(-1)?.span ?? defaultExpr.span;
+
+    return {
+      kind: "ConfigDecl",
+      span: mergeSpan(typeToken.span, lastSpan),
+      label,
+      varType,
+      name: nameToken.value,
+      default: defaultExpr,
+      constraints,
     };
   }
 
@@ -239,6 +359,12 @@ class Parser {
     if (t.kind === TokenKind.False) {
       this.advance();
       return { kind: "Literal", varType: "bool", value: false, span: t.span } satisfies LiteralExpr;
+    }
+
+    // Bare identifier (e.g. `type ble_driver` in metadata)
+    if (t.kind === TokenKind.Identifier) {
+      this.advance();
+      return { kind: "Identifier", name: t.value, span: t.span } satisfies IdentifierExpr;
     }
 
     return null;

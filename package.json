@@ -23,7 +23,8 @@
     "test:watch": "vitest",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "vscode:install": "pushd vscode && npm run vscode:install && popd"
   },
   "keywords": [
     "maustec",

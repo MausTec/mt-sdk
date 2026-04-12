@@ -1,4 +1,4 @@
-import type { PluginNode, MetadataFieldNode, Expr } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, Expr } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
 
@@ -79,7 +79,38 @@ class Emitter {
       this.emitField(plugin, field, METADATA_FIELDS, "defplugin");
     }
 
+    if (ast.configBlock !== null) {
+      plugin["config"] = this.emitConfigBlock(ast.configBlock);
+    }
+
     return { plugin, diagnostics: this.diagnostics };
+  }
+
+  private emitConfigBlock(block: ConfigBlockNode): Record<string, unknown> {
+    const config: Record<string, unknown> = {};
+
+    for (const decl of block.declarations) {
+      config[decl.name] = this.emitConfigDecl(decl);
+    }
+
+    return config;
+  }
+
+  private emitConfigDecl(decl: ConfigDecl): Record<string, unknown> {
+    const entry: Record<string, unknown> = {
+      type: decl.varType,
+      default: exprToJson(decl.default),
+    };
+
+    if (decl.label !== null) {
+      entry["label"] = decl.label;
+    }
+
+    for (const [key, expr] of Object.entries(decl.constraints)) {
+      entry[key] = exprToJson(expr);
+    }
+
+    return entry;
   }
 
   private emitField(
