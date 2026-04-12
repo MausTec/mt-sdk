@@ -275,8 +275,6 @@ class Parser {
   }
 }
 
-// --- Public API ---------------------------------------------------------------
-
 /**
  * Parse a token stream produced by {@link lex} into a `PluginNode` AST.
  *

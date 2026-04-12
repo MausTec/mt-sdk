@@ -67,7 +67,6 @@ export function emitPlugin(ast: PluginNode): { plugin: Record<string, unknown>; 
  */
 export function transpile(source: string): TranspileResult {
   const { ast, diagnostics: parseDiags } = parseSource(source);
-  console.log(JSON.stringify(ast, null, 2));
   const { plugin, diagnostics: emitDiags } = emitPlugin(ast);
   return { plugin, diagnostics: [...parseDiags, ...emitDiags] };
 }
