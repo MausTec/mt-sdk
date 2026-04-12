@@ -371,6 +371,12 @@ class Lexer {
           this.push(TokenKind.Lte, "<=", start);
           return true;
         }
+        if (this.peek(1) === ">") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.Concat, "<>", start);
+          return true;
+        }
         kind = TokenKind.Lt; break;
       }
       case "!": {

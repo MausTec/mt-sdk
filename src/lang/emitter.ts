@@ -1,4 +1,4 @@
-import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, Expr, OnNode, FnNode } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl as _GlobalDecl, DefNode, Expr, OnNode, FnNode } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
 
@@ -84,10 +84,10 @@ class Emitter {
     }
 
     if (ast.globalsBlock !== null) {
-      plugin["globals"] = this.emitGlobalsBlock(ast.globalsBlock);
+      plugin["variables"] = this.emitGlobalsBlock(ast.globalsBlock);
     }
 
-    if (ast.defs.length > 0) {
+    if (ast.defs.length > 0 || ast.functions.length > 0) {
       const functions: Record<string, unknown> = {};
 
       for (const def of ast.defs) {
@@ -136,26 +136,20 @@ class Emitter {
   }
 
   private emitGlobalsBlock(block: GlobalsBlockNode): Record<string, unknown> {
-    const globals: Record<string, unknown> = {};
+    const variables: Record<string, unknown> = {};
 
     for (const decl of block.declarations) {
-      globals[decl.name] = this.emitGlobalDecl(decl);
+      if (decl.arraySize !== null) {
+        this.diagnostics.push(langWarning(
+          `Array globals are not yet supported in JSON output; "${decl.name}" will be skipped`,
+          decl.span,
+        ));
+        continue;
+      }
+      variables[decl.name] = exprToJson(decl.init);
     }
 
-    return globals;
-  }
-
-  private emitGlobalDecl(decl: GlobalDecl): Record<string, unknown> {
-    const entry: Record<string, unknown> = {
-      type: decl.varType,
-      init: exprToJson(decl.init),
-    };
-
-    if (decl.arraySize !== null) {
-      entry["arraySize"] = decl.arraySize;
-    }
-
-    return entry;
+    return variables;
   }
 
   /**
@@ -167,7 +161,7 @@ class Emitter {
   private emitDef(def: DefNode): Record<string, unknown> {
     return {
       args: def.params.map(p => p.name),
-      vars: {},
+      vars: [],
       actions: [],
     };
   }
@@ -179,10 +173,9 @@ class Emitter {
     };
   }
 
-  // TODO: If no Vars are declared, the return can just be the actions array
   private emitOnNode(handler: OnNode): Record<string, unknown> {
     return {
-      vars: {},
+      vars: [],
       actions: [],
     };
   }
