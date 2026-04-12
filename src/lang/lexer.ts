@@ -298,6 +298,20 @@ class Lexer {
 
       case "$": {
         this.advance(); // consume `$`
+
+        // $_ and $! are special case tokens:
+        //   $_ → last result variable
+        //   $! → last error variable
+        if (this.peek() === "_") {
+          this.advance();
+          this.push(TokenKind.Accumulator, "$_", start);
+          return true;
+        } else if (this.peek() === "!") {
+          this.advance();
+          this.push(TokenKind.ErrorCode, "$!", start);
+          return true;
+        }
+
         let globalName = "";
         while (isIdentCont(this.peek())) globalName += this.advance();
         this.push(TokenKind.GlobalVar, globalName, start);
