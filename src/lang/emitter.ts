@@ -1,4 +1,4 @@
-import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, Expr } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, Expr, OnNode, FnNode } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
 
@@ -87,6 +87,24 @@ class Emitter {
       plugin["globals"] = this.emitGlobalsBlock(ast.globalsBlock);
     }
 
+    if (ast.defs.length > 0) {
+      const functions: Record<string, unknown> = {};
+
+      for (const def of ast.defs) {
+        functions[def.name] = this.emitDef(def);
+      }
+
+      for (const fn of ast.functions) {
+        functions[fn.name] = this.emitFn(fn);
+      }
+
+      plugin["functions"] = functions;
+    }
+
+    if (ast.handlers.length > 0) {
+      plugin["events"] = this.emitHandlers(ast.handlers);
+    }
+
     return { plugin, diagnostics: this.diagnostics };
   }
 
@@ -138,6 +156,56 @@ class Emitter {
     }
 
     return entry;
+  }
+
+  /**
+   * Emits a `def` block from the AST into the JSON plugin schema format.
+   * The "args" here are positional or kwarg references, which appear as local variables
+   * @param def 
+   * @returns 
+   */
+  private emitDef(def: DefNode): Record<string, unknown> {
+    return {
+      args: def.params.map(p => p.name),
+      vars: {},
+      actions: [],
+    };
+  }
+
+  private emitFn(fn: FnNode): Record<string, unknown> {
+    return {
+      args: fn.params.map(p => p.name),
+      vars: {},
+      actions: [],
+    };
+  }
+
+  // TODO: If no Vars are declared, the return can just be the actions array
+  private emitOnNode(handler: OnNode): Record<string, unknown> {
+    return {
+      vars: {},
+      actions: [],
+    };
+  }
+
+  /**
+   * This becomes the "events" key in the output JSON, which is a key/value pair of event name
+   * and an array of action objects for each handler attached to that event.
+   * @param handlers 
+   * @returns 
+   */
+  private emitHandlers(handlers: OnNode[]) {
+    const events: Record<string, unknown> = {};
+
+    for (const handler of handlers) {
+      if (!events[handler.event]) {
+        events[handler.event] = this.emitOnNode(handler);
+      } else {
+        this.diagnostics.push(langError(`Multiple handlers defined for event "${handler.event}"`));
+      }
+    }
+
+    return events;
   }
 
   private emitField(

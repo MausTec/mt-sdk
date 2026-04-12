@@ -1,6 +1,6 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, VarType } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt } from "./ast.js";
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -37,7 +37,6 @@ function emptyPlugin(span: Span): PluginNode {
  */
 const SKIP_BLOCK_STARTERS = new Set<TokenKind>([
   TokenKind.Match,
-  TokenKind.Def,
   TokenKind.On,
 ]);
 
@@ -149,54 +148,229 @@ class Parser {
 
     this.skipTrivia();
 
+    // Doc comments accumulate until consumed by a `def` or `fn` block.
+    // Any other construct clears them.
+    let pendingDocs: string[] = [];
+
     while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
+      this.skipNewlines();
+
+      if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
+
+      // Accumulate comment lines as potential doc comments for the next def.
+      if (this.check(TokenKind.Comment)) {
+        pendingDocs.push(this.advance().value);
+        continue;
+      }
+
       // Config block
       if (this.check(TokenKind.Config)) {
+        pendingDocs = [];
         result.configBlock = this.parseConfigBlock();
-        this.skipTrivia();
         continue;
       }
 
       // Globals block
       if (this.check(TokenKind.Globals)) {
+        pendingDocs = [];
         result.globalsBlock = this.parseGlobalsBlock();
-        this.skipTrivia();
+        continue;
+      }
+
+      // def block, consuming any accumulated doc comments
+      if (this.check(TokenKind.Def)) {
+        const docs = pendingDocs;
+        pendingDocs = [];
+        const def = this.parseDefBlock(docs);
+        if (def) result.defs.push(def);
+        continue;
+      }
+
+      // fn expression
+      if (this.check(TokenKind.Fn)) {
+        const docs = pendingDocs;
+        pendingDocs = [];
+        const fn = this.parseFnExpression(docs);
+        if (fn) result.functions.push(fn);
+        continue;
+      }
+
+      // on ... event handler block
+      if (this.check(TokenKind.On)) {
+        pendingDocs = [];
+        const handler = this.parseOnNode();
+        if (handler) result.handlers.push(handler);
         continue;
       }
 
       // Other sub-blocks with do...end are skipped for now
       if (SKIP_BLOCK_STARTERS.has(this.peek().kind)) {
+        pendingDocs = [];
         this.skipDoBlock();
-        this.skipTrivia();
-        continue;
-      }
-
-      // `fn` is a single-line definition, it looks a lot like a variable assignment
-      // TODO: The parser doesn't yet actually support mutli-line expressions
-      if (this.check(TokenKind.Fn)) {
-        this.skipToNextLine();
-        this.skipTrivia();
         continue;
       }
 
       // Metadata field: identifier value
       if (this.check(TokenKind.Identifier)) {
+        pendingDocs = [];
         const field = this.parseMetadataField();
         if (field) metadata.push(field);
-        this.skipTrivia();
         continue;
       }
 
       // Unexpected token, skip and recover
+      pendingDocs = [];
       const t = this.advance();
       this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in defplugin body`, t.span));
-      this.skipTrivia();
     }
 
     const endToken = this.eat(TokenKind.End);
     result.span = mergeSpan(defToken.span, endToken?.span ?? defToken.span);
 
     return result;
+  }
+
+  // --- Def block -------------------------------------------------------------
+
+  private parseDefBlock(docs: string[]): DefNode | null {
+    const kwToken = this.advance(); // consume `def`
+
+    if (!this.check(TokenKind.Identifier)) {
+      this.diagnostics.push(langError("Expected function name after `def`", this.peek().span));
+      this.skipDoBlock();
+
+      return null;
+    }
+
+    const nameToken = this.advance();
+    const params = this.parseDefParams();
+
+    this.expect(TokenKind.Do, `after \`def ${nameToken.value}(...)\``);
+    this.skipInlineComment();
+
+    // Skip body — not yet parsed
+    let depth = 1;
+    while (depth > 0 && !this.check(TokenKind.EOF)) {
+      const t = this.advance();
+      if (t.kind === TokenKind.Do) depth++;
+      else if (t.kind === TokenKind.End) depth--;
+    }
+
+    return {
+      kind: "Def",
+      span: mergeSpan(kwToken.span, this.tokens[this.pos - 1]?.span ?? kwToken.span),
+      docs,
+      name: nameToken.value,
+      params,
+      body: [],
+    };
+  }
+
+  /** Parse `(type name, type name, ...)`, returning an empty array on failure. */
+  private parseDefParams(): DefParam[] {
+    if (!this.check(TokenKind.LParen)) {
+      this.diagnostics.push(langError("Expected `(` to open parameter list", this.peek().span));
+      return [];
+    }
+
+    this.advance(); // consume `(`
+    const params: DefParam[] = [];
+
+    while (!this.check(TokenKind.RParen) && !this.check(TokenKind.EOF)) {
+      if (!TYPE_KEYWORDS.has(this.peek().kind)) {
+        this.diagnostics.push(langError("Expected type keyword in parameter list", this.peek().span));
+        // skip to `)` to recover
+        while (!this.check(TokenKind.RParen) && !this.check(TokenKind.EOF)) this.advance();
+        break;
+      }
+
+      const typeToken = this.advance();
+      const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
+
+      if (!this.check(TokenKind.Identifier)) {
+        this.diagnostics.push(langError("Expected parameter name after type", this.peek().span));
+        while (!this.check(TokenKind.RParen) && !this.check(TokenKind.EOF)) this.advance();
+        break;
+      }
+
+      const nameToken = this.advance();
+      params.push({ varType, name: nameToken.value });
+      this.eat(TokenKind.Comma);
+    }
+
+    this.expect(TokenKind.RParen, "to close parameter list");
+    return params;
+  }
+
+  // --- fn expression ---------------------------------------------------------
+  // TODO: Design review: Should we treat fn as macros since it is a distinct expression?
+  /** Parse `fn name = (type arg, ...) -> expr` — single-expression function. */
+  private parseFnExpression(docs: string[]): FnNode | null {
+    const kwToken = this.advance(); // consume `fn`
+
+    if (!this.check(TokenKind.Identifier)) {
+      this.diagnostics.push(langError("Expected function name after `fn`", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    const nameToken = this.advance();
+
+    this.expect(TokenKind.Assign, `after \`fn ${nameToken.value}\``);
+
+    const params = this.parseDefParams();
+
+    this.expect(TokenKind.Arrow, `after \`fn ${nameToken.value}(...)\``);
+    
+    const bodyExpr = this.parseScalarValue();
+    if (!bodyExpr) {
+      this.diagnostics.push(langError(`Expected expression for fn body of \`${nameToken.value}\``, this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    return {
+      kind: "Fn",
+      span: mergeSpan(kwToken.span, bodyExpr.span),
+      docs,
+      name: nameToken.value,
+      params,
+      body: bodyExpr,
+    };
+  }
+
+  // --- Event handlers ---------------------------------------------------------
+
+  /** Parse `on :event do ... end` — event handler. `event` is the atom name without `:`. */
+  private parseOnNode(): OnNode | null {
+    const kwToken = this.advance(); // consume `on`
+
+    if (!this.check(TokenKind.Atom)) {
+      this.diagnostics.push(langError("Expected event name after `on`", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    const eventToken = this.advance();
+
+    this.expect(TokenKind.Do, `after \`on :${eventToken.value}\``);
+    this.skipInlineComment();
+
+    const body: Stmt[] = [];
+
+    let depth = 1;
+    while (depth > 0 && !this.check(TokenKind.EOF)) {
+      const t = this.advance();
+      if (t.kind === TokenKind.Do) depth++;
+      else if (t.kind === TokenKind.End) depth--;
+    }
+
+    return {
+      kind: "On",
+      span: mergeSpan(kwToken.span, this.tokens[this.pos - 1]?.span ?? kwToken.span),
+      event: eventToken.value,
+      body,
+    };
   }
 
   // --- Globals block ---------------------------------------------------------

@@ -216,17 +216,23 @@ export interface MetadataFieldNode extends BaseNode {
 export interface FnNode extends BaseNode {
   kind: "Fn";
   name: string;
-  paramType: VarType;
-  paramName: string;
+  params: DefParam[];
+  docs: string[];
   body: Expr;
 }
 
-/** `def name(type arg) do ... end` — effectful multi-statement function. */
+/** A single parameter in a `def` or `fn` signature. */
+export interface DefParam {
+  varType: VarType;
+  name: string;
+}
+
+/** `def name(type arg, ...) do ... end` — effectful multi-statement function. */
 export interface DefNode extends BaseNode {
   kind: "Def";
+  docs: string[];
   name: string;
-  paramType: VarType;
-  paramName: string;
+  params: DefParam[];
   body: Stmt[];
 }
 

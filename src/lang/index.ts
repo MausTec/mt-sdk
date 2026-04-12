@@ -20,6 +20,7 @@ export type {
   OnNode,
   ConfigDecl,
   GlobalDecl,
+  DefParam,
   MatchPredicate,
   Stmt,
   Expr,
