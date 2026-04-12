@@ -2,16 +2,52 @@
     "name": "maus-tec-plugin-syntax",
     "displayName": "Maus-Tec Plugin Syntax",
     "description": "Language support for .mtp Maus-Tec plugin source files.",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": "maus-tec",
-    "engines": { "vscode": "^1.75.0" },
-    "categories": [ "Programming Languages" ],
+    "license": "MIT",
+    "engines": {
+        "vscode": "^1.75.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "main": "./dist/extension.js",
+    "activationEvents": [
+        "onLanguage:mtp"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/MausTec/mt-sdk"
+    },
+    "scripts": {
+        "bundle:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+        "bundle:server": "esbuild ../src/bin/mt-sdk-lsp.ts --bundle --outfile=dist/lsp-server.js --format=cjs --platform=node --sourcemap",
+        "build": "npm run bundle:extension && npm run bundle:server",
+        "watch": "npm run bundle:extension -- --watch & npm run bundle:server -- --watch",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "package": "npm run build && vsce package --out build/maus-tec-plugin-syntax-$(node -p \"require('./package.json').version\").vsix",
+        "vscode:install": "npm run package && code --install-extension build/maus-tec-plugin-syntax-$(node -p \"require('./package.json').version\").vsix"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.75.0",
+        "@vscode/vsce": "^3.7.1",
+        "esbuild": "^0.25.0",
+        "typescript": "^5.0.0"
+    },
     "contributes": {
         "languages": [
             {
                 "id": "mtp",
-                "aliases": [ "Maus-Tec Plugin", "mtp" ],
-                "extensions": [ ".mtp" ],
+                "aliases": [
+                    "Maus-Tec Plugin",
+                    "mtp"
+                ],
+                "extensions": [
+                    ".mtp"
+                ],
                 "configuration": "./language-configuration.json",
                 "icon": {
                     "light": "./icons/mtp-light.svg",

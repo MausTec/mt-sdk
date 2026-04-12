@@ -177,7 +177,7 @@
 
         "meta-key": {
             "comment": "Known metadata keys in the defplugin and match blocks",
-            "match": "^\\s*(version|sdk|description|author|license|repository|platform|permissions|type|ble_name_prefix|ble_name|vid|pid|serial)(?=\\s)",
+            "match": "^\\s*(version|sdkVersion|description|author|license|repository|platforms|permissions|type|ble_name_prefix|ble_name|vid|pid|serial)(?=\\s)",
             "captures": {
                 "1": { "name": "support.type.property-name.mtp" }
             }

@@ -1,0 +1,14 @@
+# Source files
+src/
+
+# Build tooling
+node_modules/
+tsconfig.json
+
+# Dev artifacts
+.vscodeignore
+*.map
+
+# Packages
+build/
+*.vsix
