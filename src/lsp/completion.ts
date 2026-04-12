@@ -50,12 +50,18 @@ export function getCompletionItems(
         ? `${decl.varType}[${decl.arraySize}]`
         : decl.varType;
 
-      items.push({
+      const globalItem: CompletionItem = {
         label: `$${decl.name}`,
         kind: CompletionItemKind.Variable,
         detail: typeLabel,
         insertText: decl.name,
-      });
+      };
+
+      if (decl.label !== null) {
+        globalItem.documentation = decl.label;
+      }
+
+      items.push(globalItem);
     }
   }
 

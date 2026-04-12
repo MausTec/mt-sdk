@@ -169,6 +169,7 @@ export interface ConfigDecl extends BaseNode {
 /** A single entry in a `globals do ... end` block. */
 export interface GlobalDecl extends BaseNode {
   kind: "GlobalDecl";
+  label: string | null;
   varType: VarType;
   name: string;
   /** `null` for scalar, positive integer for fixed-size array. */

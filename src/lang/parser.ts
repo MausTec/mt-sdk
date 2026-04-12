@@ -207,20 +207,29 @@ class Parser {
     this.skipInlineComment();
 
     const declarations: GlobalDecl[] = [];
+    let pendingLabel: string | null = null;
 
     while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
-      this.skipTrivia();
+      this.skipNewlines();
 
       if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
 
+      // A comment on its own line becomes the label for the next declaration.
+      if (this.check(TokenKind.Comment)) {
+        pendingLabel = this.advance().value;
+        continue;
+      }
+
       if (TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseGlobalDecl();
+        const decl = this.parseGlobalDecl(pendingLabel);
         if (decl) declarations.push(decl);
+        pendingLabel = null;
         continue;
       }
 
       const t = this.advance();
       this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in globals block`, t.span));
+      pendingLabel = null;
     }
 
     const endToken = this.eat(TokenKind.End);
@@ -232,7 +241,7 @@ class Parser {
     };
   }
 
-  private parseGlobalDecl(): GlobalDecl | null {
+  private parseGlobalDecl(label: string | null): GlobalDecl | null {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
@@ -276,6 +285,7 @@ class Parser {
     return {
       kind: "GlobalDecl",
       span: mergeSpan(typeToken.span, initExpr.span),
+      label,
       varType,
       name: nameToken.value,
       arraySize,
