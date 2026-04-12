@@ -56,6 +56,10 @@ export enum TokenKind {
   Lte = "<=",
   Gt = ">",
   Lt = "<",
+  BinaryOr = "|",
+  BinaryAnd = "&",
+  BinaryXor = "^",
+  BinaryNot = "~",
 
   // --- Punctuation -----------------------------------------------------------
   LParen = "(",

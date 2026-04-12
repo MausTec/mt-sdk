@@ -259,8 +259,22 @@ class Lexer {
       case "[": kind = TokenKind.LBracket;  break;
       case "]": kind = TokenKind.RBracket;  break;
       case ",": kind = TokenKind.Comma;     break;
-      case "=": kind = TokenKind.Assign;    break;
-      case ":":
+
+      // Handle Assignment or Equality (`=` vs `==`)
+      case "=": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.EqEq, "==", start);
+          return true;
+        }
+
+        this.advance();
+        this.push(TokenKind.Assign, "=", start);
+        return true;
+      }
+
+      case ":": {
         // `:name` (no space) → Atom;  bare `:` → Colon (kwarg separator)
         if (isIdentStart(this.peek(1))) {
           this.advance(); // consume `:`
@@ -272,6 +286,93 @@ class Lexer {
           this.push(TokenKind.Colon, ":", start);
         }
         return true;
+      }
+
+      case "@": {
+        this.advance(); // consume `@`
+        let configName = "";
+        while (isIdentCont(this.peek())) configName += this.advance();
+        this.push(TokenKind.ConfigRef, configName, start);
+        return true;
+      }
+
+      case "$": {
+        this.advance(); // consume `$`
+        let globalName = "";
+        while (isIdentCont(this.peek())) globalName += this.advance();
+        this.push(TokenKind.GlobalVar, globalName, start);
+        return true;
+      }
+
+      // Handle the "pipe" or "or" operator(`||` or `|>`) or binary or (`|`)
+      // TODO: Logical OR is not actually in our spec
+      case "|": {
+        if (this.peek(1) === "|") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.Or, "||", start);
+        } else if (this.peek(1) === ">") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.Pipe, "|>", start);
+        } else {
+          this.advance();
+          this.push(TokenKind.BinaryOr, "|", start);
+        }
+
+        return true;
+      }
+
+      // --- Arithmetic operators -------------------------------------------------
+      case "+": kind = TokenKind.Plus;    break;
+
+      // Handle minus or arrow (`-` vs `->`)
+      case "-": {
+        if (this.peek(1) === ">") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.Arrow, "->", start);
+          return true;
+        }
+        kind = TokenKind.Minus;   break;
+      }
+
+      case "*": kind = TokenKind.Star;    break;
+      case "/": kind = TokenKind.Slash;   break;
+
+      // --- Comparison operators -------------------------------------------------
+      case ">": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.Gte, ">=", start);
+          return true;
+        }
+        kind = TokenKind.Gt; break;
+      }
+      case "<": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.Lte, "<=", start);
+          return true;
+        }
+        kind = TokenKind.Lt; break;
+      }
+      case "!": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.NotEq, "!=", start);
+          return true;
+        }
+        return false;
+      }
+
+      // --- Bitwise operators ----------------------------------------------------
+      case "&": kind = TokenKind.BinaryAnd; break;
+      case "^": kind = TokenKind.BinaryXor; break;
+      case "~": kind = TokenKind.BinaryNot; break;
     }
 
     if (kind === null) return false;

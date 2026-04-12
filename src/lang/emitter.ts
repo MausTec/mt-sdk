@@ -175,7 +175,6 @@ class Emitter {
   private emitFn(fn: FnNode): Record<string, unknown> {
     return {
       args: fn.params.map(p => p.name),
-      vars: {},
       actions: [],
     };
   }
