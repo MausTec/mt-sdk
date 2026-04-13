@@ -1,6 +1,6 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt, LocalDeclStmt } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt, LocalDeclStmt, BinaryOp, GlobalVarExpr, AccumulatorExpr, ErrorCodeExpr, ConfigRefExpr, CallExpr, BinaryExpr, UnaryExpr } from "./ast.js";
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -44,6 +44,26 @@ const TYPE_KEYWORDS = new Map<TokenKind, VarType>([
   [TokenKind.TypeInt,    "int"],
   [TokenKind.TypeBool,   "bool"],
   [TokenKind.TypeString, "string"],
+]);
+
+/**
+ * Binary operator precedence table for the Pratt expression parser.
+ * Higher numbers bind tighter. Left-associative: right side parses at prec+1.
+ */
+const BINARY_OPS = new Map<TokenKind, { prec: number; op: BinaryOp }>([
+  [TokenKind.Or,     { prec: 1, op: "or"  }],
+  [TokenKind.And,    { prec: 2, op: "and" }],
+  [TokenKind.EqEq,   { prec: 3, op: "==" }],
+  [TokenKind.NotEq,  { prec: 3, op: "!=" }],
+  [TokenKind.Gte,    { prec: 3, op: ">=" }],
+  [TokenKind.Lte,    { prec: 3, op: "<=" }],
+  [TokenKind.Gt,     { prec: 3, op: ">"  }],
+  [TokenKind.Lt,     { prec: 3, op: "<"  }],
+  [TokenKind.Concat, { prec: 4, op: "<>" }],
+  [TokenKind.Plus,   { prec: 5, op: "+"  }],
+  [TokenKind.Minus,  { prec: 5, op: "-"  }],
+  [TokenKind.Star,   { prec: 6, op: "*"  }],
+  [TokenKind.Slash,  { prec: 6, op: "/"  }],
 ]);
 
 // --- Parser class -------------------------------------------------------------
@@ -316,8 +336,8 @@ class Parser {
     const params = this.parseDefParams();
 
     this.expect(TokenKind.Arrow, `after \`fn ${nameToken.value}(...)\``);
-    
-    const bodyExpr = this.parseScalarValue();
+
+    const bodyExpr = this.parseExpr();
     if (!bodyExpr) {
       this.diagnostics.push(langError(`Expected expression for fn body of \`${nameToken.value}\``, this.peek().span));
       this.skipToNextLine();
@@ -633,7 +653,177 @@ class Parser {
     return null;
   }
 
-  // --- Block body -------------------------------------- -----------------------
+  // --- Expression parsing (Pratt) -------------------------------------------
+
+  /**
+   * Parse a full expression using Pratt (top-down operator precedence) parsing.
+   * `minPrec` is the minimum precedence level to consume on the right side;
+   * callers pass 0 for a top-level expression.
+   * Returns null without consuming tokens if no expression is found.
+   */
+  private parseExpr(minPrec = 0): Expr | null {
+    let left = this.parsePrimary();
+    if (left === null) return null;
+
+    while (true) {
+      const rule = BINARY_OPS.get(this.peek().kind);
+      if (!rule || rule.prec <= minPrec) break;
+
+      const opToken = this.advance();
+      const right = this.parseExpr(rule.prec); // left-associative
+
+      if (right === null) {
+        this.diagnostics.push(
+          langError(`Expected expression after \`${opToken.value}\``, opToken.span),
+        );
+        break;
+      }
+
+      left = {
+        kind: "Binary",
+        op: rule.op,
+        left,
+        right,
+        span: mergeSpan(left.span, right.span),
+      } satisfies BinaryExpr;
+    }
+
+    return left;
+  }
+
+  /** Parse the non-operator (primary) prefix of an expression. */
+  private parsePrimary(): Expr | null {
+    const t = this.peek();
+
+    // Parenthesized group
+    if (t.kind === TokenKind.LParen) {
+      const open = this.advance();
+      const inner = this.parseExpr(0);
+
+      if (inner === null) {
+        this.diagnostics.push(langError("Expected expression inside parentheses", this.peek().span));
+        this.eat(TokenKind.RParen);
+        return null;
+      }
+
+      this.expect(TokenKind.RParen, "to close parenthesized expression");
+      // Preserve the span of the inner expression (parens are not a node).
+      return { ...inner, span: mergeSpan(open.span, this.tokens[this.pos - 1]?.span ?? inner.span) };
+    }
+
+    // Unary `not`
+    if (t.kind === TokenKind.Not) {
+      this.advance();
+      const operand = this.parsePrimary();
+
+      if (!operand) {
+        this.diagnostics.push(langError("Expected expression after `not`", this.peek().span));
+        return null;
+      }
+
+      return { kind: "Unary", op: "not", operand, span: mergeSpan(t.span, operand.span) } satisfies UnaryExpr;
+    }
+
+    // Unary minus
+    if (t.kind === TokenKind.Minus) {
+      this.advance();
+      const operand = this.parsePrimary();
+
+      if (!operand) {
+        this.diagnostics.push(langError("Expected expression after unary `-`", this.peek().span));
+        return null;
+      }
+
+      return { kind: "Unary", op: "-", operand, span: mergeSpan(t.span, operand.span) } satisfies UnaryExpr;
+    }
+
+    // Literals
+    if (t.kind === TokenKind.StringLit) {
+      this.advance();
+      return { kind: "Literal", varType: "string", value: t.value, span: t.span } satisfies LiteralExpr;
+    }
+
+    if (t.kind === TokenKind.Integer) {
+      this.advance();
+      return { kind: "Literal", varType: "int", value: parseInt(t.value, 10), span: t.span } satisfies LiteralExpr;
+    }
+
+    if (t.kind === TokenKind.Float) {
+      this.advance();
+      return { kind: "Literal", varType: "int", value: parseFloat(t.value), span: t.span } satisfies LiteralExpr;
+    }
+
+    if (t.kind === TokenKind.True) {
+      this.advance();
+      return { kind: "Literal", varType: "bool", value: true, span: t.span } satisfies LiteralExpr;
+    }
+
+    if (t.kind === TokenKind.False) {
+      this.advance();
+      return { kind: "Literal", varType: "bool", value: false, span: t.span } satisfies LiteralExpr;
+    }
+
+    // Sigils
+    if (t.kind === TokenKind.GlobalVar) {
+      this.advance();
+      return { kind: "GlobalVar", name: t.value, span: t.span } satisfies GlobalVarExpr;
+    }
+
+    if (t.kind === TokenKind.Accumulator) {
+      this.advance();
+      return { kind: "Accumulator", span: t.span } satisfies AccumulatorExpr;
+    }
+
+    if (t.kind === TokenKind.ErrorCode) {
+      this.advance();
+      return { kind: "ErrorCode", span: t.span } satisfies ErrorCodeExpr;
+    }
+
+    if (t.kind === TokenKind.ConfigRef) {
+      this.advance();
+      return { kind: "ConfigRef", name: t.value, span: t.span } satisfies ConfigRefExpr;
+    }
+
+    // Named call or bare identifier
+    if (t.kind === TokenKind.Identifier) {
+      this.advance();
+
+      if (this.check(TokenKind.LParen)) {
+        const args = this.parseCallArgs();
+        return {
+          kind: "Call",
+          name: t.value,
+          args,
+          span: mergeSpan(t.span, this.tokens[this.pos - 1]?.span ?? t.span),
+        } satisfies CallExpr;
+      }
+      
+      return { kind: "Identifier", name: t.value, span: t.span } satisfies IdentifierExpr;
+    }
+
+    return null;
+  }
+
+  /** Parse `(expr, expr, ...)` — the argument list of a call expression. */
+  private parseCallArgs(): Expr[] {
+    this.advance(); // consume `(`
+    const args: Expr[] = [];
+
+    while (
+      !this.check(TokenKind.RParen) &&
+      !this.check(TokenKind.EOF) &&
+      !this.check(TokenKind.Newline)
+    ) {
+      const arg = this.parseExpr(0);
+      if (arg) args.push(arg);
+      if (!this.eat(TokenKind.Comma)) break;
+    }
+
+    this.expect(TokenKind.RParen, "to close argument list");
+    return args;
+  }
+
+  // --- Block body (partial — local declarations only) -----------------------
 
   /**
    * Scans a `do...end` body that has already had its opening `do` consumed.
@@ -641,12 +831,16 @@ class Parser {
    * and collects them as `LocalDeclStmt` nodes. All other statements are
    * skipped token-by-token with nested `do...end` depth tracking.
    *
+   * A `# comment` on its own line immediately before a declaration is captured
+   * as the declaration's `label` for future IDE hover support.
+   *
    * Stops when the matching `end` is found, leaving it in the stream for
    * the caller to consume with `eat(End)`.
    */
   private parseBlockBody(): Stmt[] {
     const stmts: Stmt[] = [];
     let depth = 1;
+    let pendingLabel: string | null = null;
 
     while (depth > 0 && !this.check(TokenKind.EOF)) {
       this.skipNewlines();
@@ -655,25 +849,35 @@ class Parser {
 
       if (this.check(TokenKind.Do)) {
         depth++;
+        pendingLabel = null;
         this.advance();
         continue;
       }
 
       if (this.check(TokenKind.End)) {
         depth--;
+        pendingLabel = null;
         // Leave the final `end` for the caller; consume inner ends.
         if (depth > 0) this.advance();
         continue;
       }
 
-      // At the top level of this body, try to parse local variable declarations.
+      // Capture comment-as-label at the top level of this body only.
+      if (depth === 1 && this.check(TokenKind.Comment)) {
+        pendingLabel = this.advance().value;
+        continue;
+      }
+
+      // At the top level, try to parse local variable declarations.
       if (depth === 1 && TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseLocalDecl();
+        const decl = this.parseLocalDecl(pendingLabel);
         if (decl) stmts.push(decl);
+        pendingLabel = null;
         continue;
       }
 
       // All other tokens — skip one at a time (depth tracking continues above).
+      pendingLabel = null;
       this.advance();
     }
 
@@ -681,7 +885,7 @@ class Parser {
   }
 
   /** Parse `type name` or `type name = expr` as a local variable declaration. */
-  private parseLocalDecl(): LocalDeclStmt | null {
+  private parseLocalDecl(label: string | null): LocalDeclStmt | null {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
@@ -698,7 +902,7 @@ class Parser {
 
     if (this.check(TokenKind.Assign)) {
       this.advance(); // consume `=`
-      init = this.parseScalarValue();
+      init = this.parseExpr();
       if (!init) {
         this.diagnostics.push(
           langError(
@@ -716,6 +920,7 @@ class Parser {
     return {
       kind: "LocalDecl",
       span: mergeSpan(typeToken.span, init?.span ?? nameToken.span),
+      label,
       varType,
       name: nameToken.value,
       init,

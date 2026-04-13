@@ -105,6 +105,7 @@ export type Stmt =
 /** `type name` or `type name = expr` — local variable declaration. */
 export interface LocalDeclStmt extends BaseNode {
   kind: "LocalDecl";
+  label: string | null;
   varType: VarType;
   name: string;
   init: Expr | null;
