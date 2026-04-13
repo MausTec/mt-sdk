@@ -1,6 +1,41 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt, LocalDeclStmt, BinaryOp, GlobalVarExpr, AccumulatorExpr, ErrorCodeExpr, ConfigRefExpr, CallExpr, BinaryExpr, UnaryExpr, PipeExpr, PipeStep } from "./ast.js";
+
+import type { 
+  PluginNode, 
+  MetadataFieldNode, 
+  Expr, 
+  LiteralExpr, 
+  IdentifierExpr, 
+  ConfigBlockNode, 
+  ConfigDecl, 
+  GlobalsBlockNode, 
+  GlobalDecl, 
+  DefNode, 
+  DefParam, 
+  VarType, 
+  FnNode, 
+  OnNode, 
+  Stmt, 
+  LocalDeclStmt, 
+  AssignLocalStmt, 
+  AssignGlobalStmt, 
+  ExprStmt, 
+  IfStmt, 
+  ReturnStmt, 
+  ConditionalStmt, 
+  BinaryOp, 
+  GlobalVarExpr, 
+  AccumulatorExpr, 
+  ErrorCodeExpr, 
+  ConfigRefExpr, 
+  CallExpr, 
+  BinaryExpr, 
+  UnaryExpr, 
+  PipeExpr, 
+  PipeStep 
+} from "./ast.js";
+
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -37,7 +72,6 @@ function emptyPlugin(span: Span): PluginNode {
  */
 const SKIP_BLOCK_STARTERS = new Set<TokenKind>([
   TokenKind.Match,
-  TokenKind.On,
 ]);
 
 const TYPE_KEYWORDS = new Map<TokenKind, VarType>([
@@ -66,6 +100,36 @@ const BINARY_OPS = new Map<TokenKind, { prec: number; op: BinaryOp }>([
   [TokenKind.Slash,  { prec: 6, op: "/"  }],
 ]);
 
+/**
+ * Returns `true` if the given token can appear as the start of a primary
+ * expression. Used to disambiguate paren-free calls (`name expr`) from
+ * bare identifiers at statement level.
+ * 
+ * TODO: Trace usage to evaluate necessity, since a statement level arg-less
+ * fn call needs parens, and variable access is not effectful so a bare var 
+ * has no meaning.
+ */
+function canStartExpr(t: Token): boolean {
+  switch (t.kind) {
+    case TokenKind.StringLit:
+    case TokenKind.Integer:
+    case TokenKind.Float:
+    case TokenKind.True:
+    case TokenKind.False:
+    case TokenKind.GlobalVar:
+    case TokenKind.Accumulator:
+    case TokenKind.ErrorCode:
+    case TokenKind.ConfigRef:
+    case TokenKind.Identifier:
+    case TokenKind.LParen:
+    case TokenKind.Minus:
+    case TokenKind.Not:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // --- Parser class -------------------------------------------------------------
 
 class Parser {
@@ -75,7 +139,7 @@ class Parser {
   constructor(private readonly tokens: Token[]) {}
 
   parse(): ParseResult {
-    this.skipTrivia();
+    this.consumeTrivia();
 
     if (!this.check(TokenKind.Defplugin)) {
       const span = this.peek().span;
@@ -93,6 +157,11 @@ class Parser {
 
   private peek(): Token {
     return this.tokens[this.pos] ?? { kind: TokenKind.EOF, value: "", span: NULL_SPAN };
+  }
+
+  /** Peek at the token `offset` positions ahead of the current position. */
+  private peekAhead(offset: number): Token {
+    return this.tokens[this.pos + offset] ?? { kind: TokenKind.EOF, value: "", span: NULL_SPAN };
   }
 
   private advance(): Token {
@@ -117,24 +186,33 @@ class Parser {
     return { kind, value: "", span: t.span };
   }
 
-  /** Skip newlines, comments, inter-statement whitespace. */
-  private skipTrivia(): void {
+  /**
+   * Consume inter-statement trivia (newlines and comments). Returns accumulated
+   * doc-comment lines. A blank line (two consecutive newlines) resets the
+   * accumulator, so only comments immediately preceding a construct survive.
+   * 
+   * TODO: Future - the doc parser that consumes this would parse @/token statements into KVP token/value
+   * to handle things like @/arg or @/deprecated 
+   */
+  private consumeTrivia(): string[] {
+    let docs: string[] = [];
+
     while (this.check(TokenKind.Newline) || this.check(TokenKind.Comment)) {
-      this.advance();
+      if (this.check(TokenKind.Comment)) {
+        docs.push(this.advance().value);
+      } else {
+        this.advance();
+
+        if (docs.length > 0 && this.check(TokenKind.Newline)) {
+          docs = [];
+        }
+      }
     }
+
+    return docs;
   }
 
-  /** Skip only newlines, leaving comment tokens in the stream. */
-  private skipNewlines(): void {
-    while (this.check(TokenKind.Newline)) this.advance();
-  }
-
-  /** Skip a trailing inline comment, but not the newline itself. */
-  private skipInlineComment(): void {
-    this.eat(TokenKind.Comment);
-  }
-
-  // --- Plugin --------------------------------------------------------------
+  // --- Plugin ----------------------------------------------------------------
 
   private parsePlugin(): PluginNode {
     const defToken = this.advance(); // consume `defplugin`
@@ -149,7 +227,6 @@ class Parser {
     }
 
     this.expect(TokenKind.Do, "after defplugin display name");
-    this.skipInlineComment();
 
     const metadata: MetadataFieldNode[] = [];
 
@@ -166,41 +243,24 @@ class Parser {
       handlers: [],
     };
 
-    this.skipTrivia();
-
-    // Doc comments accumulate until consumed by a `def` or `fn` block.
-    // Any other construct clears them.
-    let pendingDocs: string[] = [];
-
     while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
-      this.skipNewlines();
-
+      const docs = this.consumeTrivia();
       if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
-
-      // Accumulate comment lines as potential doc comments for the next def.
-      if (this.check(TokenKind.Comment)) {
-        pendingDocs.push(this.advance().value);
-        continue;
-      }
 
       // Config block
       if (this.check(TokenKind.Config)) {
-        pendingDocs = [];
         result.configBlock = this.parseConfigBlock();
         continue;
       }
 
       // Globals block
       if (this.check(TokenKind.Globals)) {
-        pendingDocs = [];
         result.globalsBlock = this.parseGlobalsBlock();
         continue;
       }
 
-      // def block, consuming any accumulated doc comments
+      // def block
       if (this.check(TokenKind.Def)) {
-        const docs = pendingDocs;
-        pendingDocs = [];
         const def = this.parseDefBlock(docs);
         if (def) result.defs.push(def);
         continue;
@@ -208,8 +268,6 @@ class Parser {
 
       // fn expression
       if (this.check(TokenKind.Fn)) {
-        const docs = pendingDocs;
-        pendingDocs = [];
         const fn = this.parseFnExpression(docs);
         if (fn) result.functions.push(fn);
         continue;
@@ -217,7 +275,6 @@ class Parser {
 
       // on ... event handler block
       if (this.check(TokenKind.On)) {
-        pendingDocs = [];
         const handler = this.parseOnNode();
         if (handler) result.handlers.push(handler);
         continue;
@@ -225,21 +282,18 @@ class Parser {
 
       // Other sub-blocks with do...end are skipped for now
       if (SKIP_BLOCK_STARTERS.has(this.peek().kind)) {
-        pendingDocs = [];
         this.skipDoBlock();
         continue;
       }
 
       // Metadata field: identifier value
       if (this.check(TokenKind.Identifier)) {
-        pendingDocs = [];
         const field = this.parseMetadataField();
         if (field) metadata.push(field);
         continue;
       }
 
       // Unexpected token, skip and recover
-      pendingDocs = [];
       const t = this.advance();
       this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in defplugin body`, t.span));
     }
@@ -266,7 +320,6 @@ class Parser {
     const params = this.parseDefParams();
 
     this.expect(TokenKind.Do, `after \`def ${nameToken.value}(...)\``);
-    this.skipInlineComment();
 
     const body = this.parseBlockBody();
     const endToken = this.eat(TokenKind.End);
@@ -369,7 +422,6 @@ class Parser {
     const eventToken = this.advance();
 
     this.expect(TokenKind.Do, `after \`on :${eventToken.value}\``);
-    this.skipInlineComment();
 
     const body = this.parseBlockBody();
     const endToken = this.eat(TokenKind.End);
@@ -387,32 +439,22 @@ class Parser {
   private parseGlobalsBlock(): GlobalsBlockNode {
     const kwToken = this.advance(); // consume `globals`
     this.expect(TokenKind.Do, "after `globals`");
-    this.skipInlineComment();
 
     const declarations: GlobalDecl[] = [];
-    let pendingLabel: string | null = null;
 
     while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
-      this.skipNewlines();
-
+      const docs = this.consumeTrivia();
       if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
 
-      // A comment on its own line becomes the label for the next declaration.
-      if (this.check(TokenKind.Comment)) {
-        pendingLabel = this.advance().value;
-        continue;
-      }
-
       if (TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseGlobalDecl(pendingLabel);
+        const decl = this.parseGlobalDecl(docs.at(-1) ?? null);
+
         if (decl) declarations.push(decl);
-        pendingLabel = null;
         continue;
       }
 
       const t = this.advance();
       this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in globals block`, t.span));
-      pendingLabel = null;
     }
 
     const endToken = this.eat(TokenKind.End);
@@ -481,37 +523,24 @@ class Parser {
   private parseConfigBlock(): ConfigBlockNode {
     const kwToken = this.advance(); // consume `config`
     this.expect(TokenKind.Do, "after `config`");
-    this.skipInlineComment();
 
     const declarations: ConfigDecl[] = [];
-    let pendingLabel: string | null = null;
 
-    // Inside a config block we manage trivia manually so that a `# comment`
-    // immediately above a declaration is captured as its label.
-    // TODO: Expand this to include multi-line doc comments
     while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
-      this.skipNewlines();
-
+      const docs = this.consumeTrivia();
       if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
-
-      // A comment on its own line becomes the label for the next declaration.
-      if (this.check(TokenKind.Comment)) {
-        pendingLabel = this.advance().value;
-        continue;
-      }
 
       // Type keyword starts a declaration.
       if (TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseConfigDecl(pendingLabel);
+        const decl = this.parseConfigDecl(docs.at(-1) ?? null);
+
         if (decl) declarations.push(decl);
-        pendingLabel = null;
         continue;
       }
 
       // Anything else is unexpected, skip
       const t = this.advance();
       this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in config block`, t.span));
-      pendingLabel = null;
     }
 
     const endToken = this.eat(TokenKind.End);
@@ -715,7 +744,7 @@ class Parser {
           args = this.parseCallArgs();
         }
 
-        const callSpan = mergeSpan(nameTok.span, this.tokens[this.pos - 1]?.span ?? nameTok.span);
+        const callSpan = mergeSpan(nameTok.span, this.peekAhead(-1).span);
         const call: CallExpr = { kind: "Call", name: nameTok.value, args, span: callSpan };
         steps.push({ call, carriedType: "unknown" });
       }
@@ -748,7 +777,7 @@ class Parser {
 
       this.expect(TokenKind.RParen, "to close parenthesized expression");
       // Preserve the span of the inner expression (parens are not a node).
-      return { ...inner, span: mergeSpan(open.span, this.tokens[this.pos - 1]?.span ?? inner.span) };
+      return { ...inner, span: mergeSpan(open.span, this.peekAhead(-1).span) };
     }
 
     // Unary `not`
@@ -790,7 +819,7 @@ class Parser {
 
     if (t.kind === TokenKind.Float) {
       this.advance();
-      return { kind: "Literal", varType: "int", value: parseFloat(t.value), span: t.span } satisfies LiteralExpr;
+      return { kind: "Literal", varType: "float", value: parseFloat(t.value), span: t.span } satisfies LiteralExpr;
     }
 
     if (t.kind === TokenKind.True) {
@@ -834,7 +863,7 @@ class Parser {
           kind: "Call",
           name: t.value,
           args,
-          span: mergeSpan(t.span, this.tokens[this.pos - 1]?.span ?? t.span),
+          span: mergeSpan(t.span, this.peekAhead(-1).span),
         } satisfies CallExpr;
       }
       
@@ -863,69 +892,299 @@ class Parser {
     return args;
   }
 
-  // --- Block body (partial — local declarations only) -----------------------
+  // --- Block body ------------------------------------------------------------
 
   /**
-   * Scans a `do...end` body that has already had its opening `do` consumed.
-   * Recognizes local variable declarations (`type name` / `type name = expr`)
-   * and collects them as `LocalDeclStmt` nodes. All other statements are
-   * skipped token-by-token with nested `do...end` depth tracking.
-   *
-   * A `# comment` on its own line immediately before a declaration is captured
-   * as the declaration's `label` for future IDE hover support.
-   *
-   * Stops when the matching `end` is found, leaving it in the stream for
-   * the caller to consume with `eat(End)`.
+   * Parse a `do...end` body that has already had its opening `do` consumed.
+   * Uses `consumeTrivia()` to handle inter-statement whitespace and accumulate
+   * doc comments for the following declaration. Stops (without consuming) when
+   * a stop token (`end`, `EOF`, or any extra kinds from `stopAt`) is reached.
    */
-  private parseBlockBody(): Stmt[] {
+  private parseBlockBody(...stopAt: TokenKind[]): Stmt[] {
+    const stopSet = new Set([TokenKind.End, TokenKind.EOF, ...stopAt]);
     const stmts: Stmt[] = [];
-    let depth = 1;
-    let pendingLabel: string | null = null;
 
-    while (depth > 0 && !this.check(TokenKind.EOF)) {
-      this.skipNewlines();
+    while (true) {
+      const docs = this.consumeTrivia();
+      if (stopSet.has(this.peek().kind)) break;
 
-      if (this.check(TokenKind.EOF)) break;
-
-      if (this.check(TokenKind.Do)) {
-        depth++;
-        pendingLabel = null;
-        this.advance();
-        continue;
-      }
-
-      if (this.check(TokenKind.End)) {
-        depth--;
-        pendingLabel = null;
-        // Leave the final `end` for the caller; consume inner ends.
-        if (depth > 0) this.advance();
-        continue;
-      }
-
-      // Capture comment-as-label at the top level of this body only.
-      if (depth === 1 && this.check(TokenKind.Comment)) {
-        pendingLabel = this.advance().value;
-        continue;
-      }
-
-      // At the top level, try to parse local variable declarations.
-      if (depth === 1 && TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseLocalDecl(pendingLabel);
-        if (decl) stmts.push(decl);
-        pendingLabel = null;
-        continue;
-      }
-
-      // All other tokens — skip one at a time (depth tracking continues above).
-      pendingLabel = null;
-      this.advance();
+      const stmt = this.parseStmt(docs);
+      if (stmt !== null) stmts.push(stmt);
     }
 
     return stmts;
   }
 
+  /**
+   * Parse one statement. `docs` are accumulated doc-comment lines from the
+   * preceding trivia, and are passed to statements that support them.
+   */
+  private parseStmt(docs: string[]): Stmt | null {
+    const t = this.peek();
+
+    if (t.kind === TokenKind.End || t.kind === TokenKind.Else || t.kind === TokenKind.EOF) return null;
+
+    // Local variable declaration: `type name` / `type name = expr`
+    if (TYPE_KEYWORDS.has(t.kind)) {
+      const stmt = this.parseLocalDecl(docs);
+      if (stmt === null) return null;
+
+      // Declarations cannot have postfix guards — error and recover
+      if (this.check(TokenKind.If) || this.check(TokenKind.Unless)) {
+        this.diagnostics.push(
+          langError("Declaration cannot have a trailing condition, use a conditional assignment instead", this.peek().span),
+        );
+
+        this.skipToNextLine();
+      }
+
+      return stmt;
+    }
+
+    // Unknown block-like construct: `identifier ... do ... end` (e.g. `while`, `for`)
+    // Lookahead on the current line: if `do` is found before a newline, skip it.
+    if (t.kind === TokenKind.Identifier && this.hasDoOnCurrentLine()) {
+      this.diagnostics.push(langError(`Unsupported block statement \`${t.value}\``, t.span));
+      this.skipDoBlock();
+      return null;
+    }
+
+    // Block if: `if cond do ... [else ...] end`
+    // TODO: This has an older draft for a pure inline IF syntax, but I think for simplicity we should evaluate
+    // disallowing full inline, and error after the "do" on any other non-comment tokens.
+    if (t.kind === TokenKind.If) {
+      const s = this.parseIfStmt();
+      if (s === null) return null;
+
+      // Nothing meaningful should follow `end` on the same line
+      const after = this.peek();
+
+      // TODO: This should be a list of valid post-do line ending tokens:
+      if (after.kind !== TokenKind.Newline && after.kind !== TokenKind.Comment &&
+          after.kind !== TokenKind.EOF && after.kind !== TokenKind.End &&
+          after.kind !== TokenKind.Else) {
+        this.diagnostics.push(
+          langError(`Unexpected \`${after.value || after.kind}\` after block — only a comment may follow \`end\``, after.span),
+        );
+
+        this.skipToNextLine();
+      }
+      return s;
+    }
+
+    // TODO: Add other block constructs (while, unless, until, etc)
+    // TODO: Eventually add "for..in...do"
+
+    // return statement
+    if (t.kind === TokenKind.Return) return this.wrapConditional(this.parseReturnStmt());
+
+    // Assignment or expression statement — eligible for postfix conditionals
+    const stmt = this.parseAssignOrExprStmt();
+    return stmt !== null ? this.wrapConditional(stmt) : null;
+  }
+
+  /**
+   * Parse an assignment (`name = expr`, `$name = expr`) or expression
+   * statement, including paren-free calls (`log "msg"`, `setLevel @cfg`).
+   */
+  private parseAssignOrExprStmt(): Stmt | null {
+    const t = this.peek();
+    const ahead = this.peekAhead(1);
+
+    // $name = expr  (global assign)
+    if (t.kind === TokenKind.GlobalVar && ahead.kind === TokenKind.Assign) {
+      const nameTok = this.advance(); // $name
+      this.advance();                 // =
+      const value = this.parseExpr();
+
+      if (!value) {
+        this.diagnostics.push(langError(`Expected value after \`=\` for \`$${nameTok.value}\``, this.peek().span));
+        this.skipToNextLine();
+        return null;
+      }
+
+      return {
+        kind: "AssignGlobal",
+        name: nameTok.value,
+        value,
+        span: mergeSpan(nameTok.span, value.span),
+      } satisfies AssignGlobalStmt;
+    }
+
+    // name = expr  (local assign)
+    if (t.kind === TokenKind.Identifier && ahead.kind === TokenKind.Assign) {
+      const nameTok = this.advance(); // name
+      this.advance();                 // =
+      const value = this.parseExpr();
+
+      if (!value) {
+        this.diagnostics.push(langError(`Expected value after \`=\` for \`${nameTok.value}\``, this.peek().span));
+        this.skipToNextLine();
+        return null;
+      }
+
+      return {
+        kind: "AssignLocal",
+        name: nameTok.value,
+        value,
+        span: mergeSpan(nameTok.span, value.span),
+      } satisfies AssignLocalStmt;
+    }
+
+    // Paren-free call: `name expr` is an identifier followed by an expression-starter
+    // that is not `(` (which feeds naturally into parsePrimary as a parens call).
+    if (t.kind === TokenKind.Identifier && ahead.kind !== TokenKind.LParen && canStartExpr(ahead)) {
+      return this.parseParenFreeCallStmt();
+    }
+
+    // General expression statement (piped exprs, calls with parens, sigil-led exprs…)
+    const expr = this.parseExpr();
+
+    if (!expr) {
+      this.diagnostics.push(langError(`Unexpected \`${t.value || t.kind}\` in statement`, t.span));
+      this.advance();
+      return null;
+    }
+
+    if (this.check(TokenKind.Assign)) {
+      this.diagnostics.push(langError("Unexpected `=` in statement: assignment must be `name = value`", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    return { kind: "ExprStmt", expr, span: expr.span } satisfies ExprStmt;
+  }
+
+  /** Parse a paren-free call `name expr` where `expr` is a single argument. */
+  private parseParenFreeCallStmt(): Stmt | null {
+    const nameTok = this.advance(); // name
+    const arg = this.parseExpr();
+
+    // An `=` after the argument is invalid, this is a guard against ruby-like syntax where assigns return
+    if (this.check(TokenKind.Assign)) {
+      this.diagnostics.push(langError("Unexpected `=` in statement: assignment must be its own expression", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    const args: Expr[] = arg ? [arg] : [];
+    const callSpan = mergeSpan(nameTok.span, arg?.span ?? nameTok.span);
+
+    const call: CallExpr = { 
+      kind: "Call", 
+      name: nameTok.value, 
+      args, 
+      span: callSpan 
+    };
+
+    return { kind: "ExprStmt", expr: call, span: callSpan } satisfies ExprStmt;
+  }
+
+  /** Parse `if cond do ... [else ...] end`. */
+  private parseIfStmt(): IfStmt | null {
+    const ifToken = this.advance(); // `if`
+    const condition = this.parseExpr();
+
+    if (!condition) {
+      this.diagnostics.push(langError("Expected condition after `if`", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    this.expect(TokenKind.Do, "after if condition");
+
+    const then = this.parseBlockBody(TokenKind.Else);
+
+    let elseBranch: Stmt[] | null = null;
+    if (this.eat(TokenKind.Else)) {
+      elseBranch = this.parseBlockBody();
+    }
+
+    this.expect(TokenKind.End, "to close if block");
+    const endSpan = this.peekAhead(-1).span;
+
+    return {
+      kind: "If",
+      condition,
+      then,
+      else: elseBranch,
+      span: mergeSpan(ifToken.span, endSpan),
+    } satisfies IfStmt;
+  }
+
+  /** Parse `return [expr]`. Postfix guard is handled by the caller via `wrapConditional`. */
+  private parseReturnStmt(): ReturnStmt {
+    const retToken = this.advance(); // `return`
+
+    // Only parse a value expression when the next token can start one —
+    // distinguishes `return if cond` (postfix guard, no value) from `return expr`.
+    let value: Expr | null = null;
+    const next = this.peek();
+
+    // TODO: See previous comment about valid trivial line ending construct list:
+    if (
+      next.kind !== TokenKind.Newline &&
+      next.kind !== TokenKind.EOF &&
+      next.kind !== TokenKind.If &&
+      next.kind !== TokenKind.Unless &&
+      next.kind !== TokenKind.Comment
+    ) {
+      value = this.parseExpr();
+    }
+
+    return {
+      kind: "Return",
+      value,
+      span: mergeSpan(retToken.span, value?.span ?? retToken.span),
+    } satisfies ReturnStmt;
+  }
+
+  /**
+   * If the current token is `if` or `unless`, parse a postfix conditional
+   * and wrap `inner` in a `ConditionalStmt`. Otherwise return `inner` as-is.
+   */
+  private wrapConditional(inner: Stmt): Stmt {
+    if (!this.check(TokenKind.If) && !this.check(TokenKind.Unless)) {
+      return inner;
+    }
+
+    const kw = this.advance();
+    const condition = this.parseExpr();
+
+    if (!condition) {
+      this.diagnostics.push(langError(`Expected condition after trailing \`${kw.kind}\``, this.peek().span));
+      return inner;
+    }
+
+    // TODO: Upgrade the `as "if" | "unless"` type to a `GuardKeyword` type, which also supports `until` and `while`
+    return {
+      kind: "Conditional",
+      guard: kw.kind as "if" | "unless",
+      condition,
+      body: inner,
+      span: mergeSpan(inner.span, condition.span),
+    } satisfies ConditionalStmt;
+  }
+
+  /**
+   * Lookahead helper: returns `true` if a `do` token appears on the current
+   * line before a newline or EOF. Used to detect unknown block-like statements.
+   */
+  private hasDoOnCurrentLine(): boolean {
+    let i = this.pos + 1;
+
+    while (i < this.tokens.length) {
+      const k = this.tokens[i]!.kind;
+      if (k === TokenKind.Newline || k === TokenKind.EOF) return false;
+      if (k === TokenKind.Do) return true;
+      i++;
+    }
+    
+    return false;
+  }
+
   /** Parse `type name` or `type name = expr` as a local variable declaration. */
-  private parseLocalDecl(label: string | null): LocalDeclStmt | null {
+  private parseLocalDecl(docs: string[]): LocalDeclStmt | null {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
@@ -955,12 +1214,10 @@ class Parser {
       }
     }
 
-    this.skipInlineComment();
-
     return {
       kind: "LocalDecl",
       span: mergeSpan(typeToken.span, init?.span ?? nameToken.span),
-      label,
+      docs,
       varType,
       name: nameToken.value,
       init,

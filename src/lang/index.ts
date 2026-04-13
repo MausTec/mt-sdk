@@ -22,6 +22,7 @@ export type {
   GlobalDecl,
   DefParam,
   MatchPredicate,
+  ConditionalStmt,
   Stmt,
   Expr,
   VarType,

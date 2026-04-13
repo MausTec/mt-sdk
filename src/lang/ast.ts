@@ -6,7 +6,7 @@ export interface BaseNode {
   span: Span;
 }
 
-export type VarType = "int" | "bool" | "string";
+export type VarType = "int" | "float" | "bool" | "string";
 
 // --- Expressions --------------------------------------------------------------
 
@@ -113,12 +113,13 @@ export type Stmt =
   | AssignGlobalStmt
   | ExprStmt
   | IfStmt
-  | ReturnStmt;
+  | ReturnStmt
+  | ConditionalStmt;
 
 /** `type name` or `type name = expr` — local variable declaration. */
 export interface LocalDeclStmt extends BaseNode {
   kind: "LocalDecl";
-  label: string | null;
+  docs: string[];
   varType: VarType;
   name: string;
   init: Expr | null;
@@ -138,19 +139,10 @@ export interface AssignGlobalStmt extends BaseNode {
   value: Expr;
 }
 
-/**
- * An expression used as a statement (call, pipe, paren-free call).
- * May carry a trailing `if`/`unless` guard.
- */
+/** An expression used as a statement (call, pipe, paren-free call). */
 export interface ExprStmt extends BaseNode {
   kind: "ExprStmt";
   expr: Expr;
-  trailing: TrailingCondition | null;
-}
-
-export interface TrailingCondition {
-  kind: "if" | "unless";
-  condition: Expr;
 }
 
 export interface IfStmt extends BaseNode {
@@ -163,6 +155,16 @@ export interface IfStmt extends BaseNode {
 export interface ReturnStmt extends BaseNode {
   kind: "Return";
   value: Expr | null;
+}
+
+/**
+ * Postfix conditional wrapper: `stmt if cond` / `stmt unless cond`.
+ */
+export interface ConditionalStmt extends BaseNode {
+  kind: "Conditional";
+  guard: "if" | "unless";
+  condition: Expr;
+  body: Stmt;
 }
 
 // --- Block-level declarations -------------------------------------------------

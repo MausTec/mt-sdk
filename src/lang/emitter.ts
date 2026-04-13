@@ -166,9 +166,12 @@ class Emitter {
 
     for (const stmt of body) {
       if (stmt.kind !== "LocalDecl") continue;
+
       vars.push(stmt.name);
+
       if (stmt.init !== null) {
-        initActions.push({ set: { [`$${stmt.name}`]: exprToJson(stmt.init) } });
+        const entry: Record<string, unknown> = { set: { [`$${stmt.name}`]: exprToJson(stmt.init) } };
+        initActions.push(entry);
       }
     }
 
