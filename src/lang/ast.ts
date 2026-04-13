@@ -83,13 +83,26 @@ export interface CallExpr extends BaseNode {
 }
 
 /**
+ * A single step in a pipe chain.
+ * `call` is the function being applied.
+ * `carriedType` is the type flowing *into* this step from the previous result.
+ * Currently always `"unknown"` until a return-type system is added
+ */
+export interface PipeStep {
+  call: CallExpr;
+  carriedType: "unknown";
+}
+
+/**
  * A pipeline: `head |> step1() |> step2()`.
- * Each step is a `CallExpr`; `$_` in a step's args refers to the previous result.
+ * `$_` in any step's args refers to the carried value from the previous step.
+ * `carriedType` on each step will carry the inferred return type of the prior
+ * expression once type inference is implemented.
  */
 export interface PipeExpr extends BaseNode {
   kind: "Pipe";
   head: Expr;
-  steps: CallExpr[];
+  steps: PipeStep[];
 }
 
 // --- Statements ---------------------------------------------------------------

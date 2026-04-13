@@ -1,6 +1,6 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt, LocalDeclStmt, BinaryOp, GlobalVarExpr, AccumulatorExpr, ErrorCodeExpr, ConfigRefExpr, CallExpr, BinaryExpr, UnaryExpr } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt, LocalDeclStmt, BinaryOp, GlobalVarExpr, AccumulatorExpr, ErrorCodeExpr, ConfigRefExpr, CallExpr, BinaryExpr, UnaryExpr, PipeExpr, PipeStep } from "./ast.js";
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -665,6 +665,7 @@ class Parser {
     let left = this.parsePrimary();
     if (left === null) return null;
 
+    // Binary operators
     while (true) {
       const rule = BINARY_OPS.get(this.peek().kind);
       if (!rule || rule.prec <= minPrec) break;
@@ -686,6 +687,45 @@ class Parser {
         right,
         span: mergeSpan(left.span, right.span),
       } satisfies BinaryExpr;
+    }
+
+    // Pipe chain: `expr |> call() |> call() ...`
+    // Pipes are collected here rather than via the binary-op table because each
+    // step must be a call (not an arbitrary expression), and we want to carry
+    // type context per-step.
+    if (this.check(TokenKind.Pipe)) {
+      const steps: PipeStep[] = [];
+
+      while (this.check(TokenKind.Pipe)) {
+        this.advance(); // consume `|>`
+
+        // A pipe step must be a call expression: `name(args...)` or bare `name`
+        // (bare = zero-arg call shorthand).
+        const nameTok = this.peek();
+        if (nameTok.kind !== TokenKind.Identifier) {
+          this.diagnostics.push(
+            langError("Expected function name after `|>`", nameTok.span),
+          );
+          break;
+        }
+        this.advance(); // consume name
+
+        let args: Expr[] = [];
+        if (this.check(TokenKind.LParen)) {
+          args = this.parseCallArgs();
+        }
+
+        const callSpan = mergeSpan(nameTok.span, this.tokens[this.pos - 1]?.span ?? nameTok.span);
+        const call: CallExpr = { kind: "Call", name: nameTok.value, args, span: callSpan };
+        steps.push({ call, carriedType: "unknown" });
+      }
+
+      return {
+        kind: "Pipe",
+        head: left,
+        steps,
+        span: mergeSpan(left.span, steps.at(-1)?.call.span ?? left.span),
+      } satisfies PipeExpr;
     }
 
     return left;
