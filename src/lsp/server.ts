@@ -4,6 +4,8 @@ import { createConnection, ProposedFeatures } from "vscode-languageserver/node.j
 import { DocumentStore } from "./document-store.js";
 import { publishDiagnostics } from "./diagnostics.js";
 import { getCompletionItems } from "./completion.js";
+import { findNodePath } from "./find-node.js";
+import { getHoverContent } from "./hover.js";
 
 /**
  * Start the mt-sdk language server.
@@ -22,7 +24,7 @@ export function startServer(): void {
 
         // Capabilities are added here as each feature is implemented.
         completionProvider: { triggerCharacters: ["@", "$"] },
-        // hoverProvider: true,
+        hoverProvider: true,
       },
       serverInfo: {
         name: "mt-sdk-lsp",
@@ -55,6 +57,20 @@ export function startServer(): void {
 
   connection.onCompletion(({ textDocument, context }) => {
     return getCompletionItems(store, textDocument.uri, context?.triggerCharacter ?? undefined);
+  });
+
+  // --- Hover -----------------------------------------------------------------
+
+  connection.onHover(({ textDocument, position }) => {
+    const doc = store.get(textDocument.uri);
+    if (doc === undefined) return null;
+
+    // LSP positions are 0-based; Span is 1-based.
+    const path = findNodePath(doc.parsed.ast, position.line + 1, position.character + 1);
+
+    // TODO: getHoverContent needs a document-specific SDK registered to the Symbol Table, probably, 
+    // since the SDK docs are based on that document's sdkVersion and productFamily.
+    return getHoverContent(doc.parsed.ast, path);
   });
 
   connection.listen();
