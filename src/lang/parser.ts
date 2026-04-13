@@ -1,6 +1,6 @@
 import type { Token } from "./token.js";
 import { TokenKind } from "./token.js";
-import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, Expr, LiteralExpr, IdentifierExpr, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl, DefNode, DefParam, VarType, FnNode, OnNode, Stmt, LocalDeclStmt } from "./ast.js";
 import type { LangDiagnostic, Span } from "./diagnostics.js";
 import { langError, NULL_SPAN } from "./diagnostics.js";
 
@@ -248,21 +248,16 @@ class Parser {
     this.expect(TokenKind.Do, `after \`def ${nameToken.value}(...)\``);
     this.skipInlineComment();
 
-    // Skip body — not yet parsed
-    let depth = 1;
-    while (depth > 0 && !this.check(TokenKind.EOF)) {
-      const t = this.advance();
-      if (t.kind === TokenKind.Do) depth++;
-      else if (t.kind === TokenKind.End) depth--;
-    }
+    const body = this.parseBlockBody();
+    const endToken = this.eat(TokenKind.End);
 
     return {
       kind: "Def",
-      span: mergeSpan(kwToken.span, this.tokens[this.pos - 1]?.span ?? kwToken.span),
+      span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
       docs,
       name: nameToken.value,
       params,
-      body: [],
+      body,
     };
   }
 
@@ -356,18 +351,12 @@ class Parser {
     this.expect(TokenKind.Do, `after \`on :${eventToken.value}\``);
     this.skipInlineComment();
 
-    const body: Stmt[] = [];
-
-    let depth = 1;
-    while (depth > 0 && !this.check(TokenKind.EOF)) {
-      const t = this.advance();
-      if (t.kind === TokenKind.Do) depth++;
-      else if (t.kind === TokenKind.End) depth--;
-    }
+    const body = this.parseBlockBody();
+    const endToken = this.eat(TokenKind.End);
 
     return {
       kind: "On",
-      span: mergeSpan(kwToken.span, this.tokens[this.pos - 1]?.span ?? kwToken.span),
+      span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
       event: eventToken.value,
       body,
     };
@@ -642,6 +631,95 @@ class Parser {
     }
 
     return null;
+  }
+
+  // --- Block body -------------------------------------- -----------------------
+
+  /**
+   * Scans a `do...end` body that has already had its opening `do` consumed.
+   * Recognizes local variable declarations (`type name` / `type name = expr`)
+   * and collects them as `LocalDeclStmt` nodes. All other statements are
+   * skipped token-by-token with nested `do...end` depth tracking.
+   *
+   * Stops when the matching `end` is found, leaving it in the stream for
+   * the caller to consume with `eat(End)`.
+   */
+  private parseBlockBody(): Stmt[] {
+    const stmts: Stmt[] = [];
+    let depth = 1;
+
+    while (depth > 0 && !this.check(TokenKind.EOF)) {
+      this.skipNewlines();
+
+      if (this.check(TokenKind.EOF)) break;
+
+      if (this.check(TokenKind.Do)) {
+        depth++;
+        this.advance();
+        continue;
+      }
+
+      if (this.check(TokenKind.End)) {
+        depth--;
+        // Leave the final `end` for the caller; consume inner ends.
+        if (depth > 0) this.advance();
+        continue;
+      }
+
+      // At the top level of this body, try to parse local variable declarations.
+      if (depth === 1 && TYPE_KEYWORDS.has(this.peek().kind)) {
+        const decl = this.parseLocalDecl();
+        if (decl) stmts.push(decl);
+        continue;
+      }
+
+      // All other tokens — skip one at a time (depth tracking continues above).
+      this.advance();
+    }
+
+    return stmts;
+  }
+
+  /** Parse `type name` or `type name = expr` as a local variable declaration. */
+  private parseLocalDecl(): LocalDeclStmt | null {
+    const typeToken = this.advance();
+    const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
+
+    if (!this.check(TokenKind.Identifier)) {
+      this.diagnostics.push(
+        langError("Expected name after type in local declaration", this.peek().span),
+      );
+      this.skipToNextLine();
+      return null;
+    }
+
+    const nameToken = this.advance();
+    let init: Expr | null = null;
+
+    if (this.check(TokenKind.Assign)) {
+      this.advance(); // consume `=`
+      init = this.parseScalarValue();
+      if (!init) {
+        this.diagnostics.push(
+          langError(
+            `Expected value after \`=\` in declaration of \`${nameToken.value}\``,
+            this.peek().span,
+          ),
+        );
+        this.skipToNextLine();
+        return null;
+      }
+    }
+
+    this.skipInlineComment();
+
+    return {
+      kind: "LocalDecl",
+      span: mergeSpan(typeToken.span, init?.span ?? nameToken.span),
+      varType,
+      name: nameToken.value,
+      init,
+    };
   }
 
   // --- Skip helpers ----------------------------------------------------------

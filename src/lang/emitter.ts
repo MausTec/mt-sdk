@@ -1,4 +1,4 @@
-import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl as _GlobalDecl, DefNode, Expr, OnNode, FnNode } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl as _GlobalDecl, DefNode, Expr, OnNode, FnNode, Stmt } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
 
@@ -153,16 +153,38 @@ class Emitter {
   }
 
   /**
+   * Collect `LocalDeclStmt` nodes from a block body, returning:
+   * - `vars`: flat array of local variable names (for scope allocation)
+   * - `initActions`: `set` actions for any declarations that carry an initial value
+   */
+  private extractLocals(body: Stmt[]): {
+    vars: string[];
+    initActions: Record<string, unknown>[];
+  } {
+    const vars: string[] = [];
+    const initActions: Record<string, unknown>[] = [];
+
+    for (const stmt of body) {
+      if (stmt.kind !== "LocalDecl") continue;
+      vars.push(stmt.name);
+      if (stmt.init !== null) {
+        initActions.push({ set: { [`$${stmt.name}`]: exprToJson(stmt.init) } });
+      }
+    }
+
+    return { vars, initActions };
+  }
+
+  /**
    * Emits a `def` block from the AST into the JSON plugin schema format.
    * The "args" here are positional or kwarg references, which appear as local variables
-   * @param def 
-   * @returns 
    */
   private emitDef(def: DefNode): Record<string, unknown> {
+    const { vars, initActions } = this.extractLocals(def.body);
     return {
       args: def.params.map(p => p.name),
-      vars: [],
-      actions: [],
+      vars,
+      actions: initActions,
     };
   }
 
@@ -174,9 +196,10 @@ class Emitter {
   }
 
   private emitOnNode(handler: OnNode): Record<string, unknown> {
+    const { vars, initActions } = this.extractLocals(handler.body);
     return {
-      vars: [],
-      actions: [],
+      vars,
+      actions: initActions,
     };
   }
 
