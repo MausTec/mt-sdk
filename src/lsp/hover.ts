@@ -3,6 +3,7 @@ import type { Span } from "../lang/diagnostics.js";
 import type {
   ASTNode,
   PluginNode,
+  FnNode,
   DefNode,
   OnNode,
   Stmt,
@@ -63,15 +64,16 @@ function mkHover(markdown: string, span: Span): Hover {
 // --- Scope helpers -----------------------------------------------------------
 
 /**
- * Walk the ASTPath to find the enclosing DefNode or OnNode, which gives us
- * access to the local statement body for local variable resolution.
+ * Walk the ASTPath to find the enclosing DefNode, FnNode, or OnNode, which
+ * gives us access to the local statement body and parameters for resolution.
  */
-function findEnclosingBody(path: ASTPath): { stmts: Stmt[]; kind: "Def" | "On" } | null {
+function findEnclosingBody(path: ASTPath): { stmts: Stmt[]; params: DefParam[]; kind: "Def" | "Fn" | "On" } | null {
   for (let i = path.length - 1; i >= 0; i--) {
     const node = path[i]!;
 
-    if (node.kind === "Def") return { stmts: (node as DefNode).body, kind: "Def" };
-    if (node.kind === "On") return { stmts: (node as OnNode).body, kind: "On" };
+    if (node.kind === "Def") return { stmts: (node as DefNode).body, params: (node as DefNode).params, kind: "Def" };
+    if (node.kind === "Fn") return { stmts: [], params: (node as FnNode).params, kind: "Fn" };
+    if (node.kind === "On") return { stmts: (node as OnNode).body, params: [], kind: "On" };
   }
 
   return null;
@@ -151,10 +153,13 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
       const body = findEnclosingBody(path);
 
       if (body !== null) {
-        const local = symbols.resolveLocal(node.name, body.stmts, node.span.line);
+        const local = symbols.resolveLocal(node.name, body.stmts, node.span.line, body.params);
+
         if (local !== undefined) {
+          const label = local.source === "parameter" ? "parameter" : "local";
+
           return mkHover(
-            `\`\`\`mtp\n(local) ${local.varType} ${local.name}\n\`\`\`` + formatDocs(local.docs),
+            `\`\`\`mtp\n(${label}) ${local.varType} ${local.name}\n\`\`\`` + formatDocs(local.docs),
             node.span,
           );
         }
@@ -280,11 +285,13 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
       const body = findEnclosingBody(path);
       
       if (body !== null) {
-        const local = symbols.resolveLocal(node.name, body.stmts, node.span.line);
+        const local = symbols.resolveLocal(node.name, body.stmts, node.span.line, body.params);
         
         if (local !== undefined) {
+          const label = local.source === "parameter" ? "parameter" : "local";
+          
           return mkHover(
-            `\`\`\`mtp\n(local) ${local.varType} ${local.name}\n\`\`\`` + formatDocs(local.docs),
+            `\`\`\`mtp\n(${label}) ${local.varType} ${local.name}\n\`\`\`` + formatDocs(local.docs),
             node.span,
           );
         }

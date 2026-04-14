@@ -23,7 +23,7 @@ export interface ResolvedFunction {
 }
 
 export interface ResolvedVariable {
-  source: "config" | "global" | "local";
+  source: "config" | "global" | "local" | "parameter";
   name: string;
   varType: VarType;
   docs: string[];
@@ -155,12 +155,32 @@ export class SymbolTable {
   }
 
   /**
-   * Resolve a local variable by scanning the body of a DefNode or OnNode
-   * for a LocalDeclStmt that precedes (or is at) the given line.
+   * Resolve a local variable or function parameter by name within a function
+   * or event handler body. Checks parameters first, then scans statements for
+   * a LocalDeclStmt that precedes (or is at) the given line.
    *
-   * This is intentionally a linear scan — function bodies are small.
+   * `params` should be the DefParam[] of the enclosing fn/def (empty for on-handlers).
    */
-  resolveLocal(name: string, bodyStmts: readonly import("../lang/ast.js").Stmt[], beforeLine: number): ResolvedVariable | undefined {
+  resolveLocal(
+    name: string,
+    bodyStmts: readonly import("../lang/ast.js").Stmt[],
+    beforeLine: number,
+    params?: readonly DefParam[],
+  ): ResolvedVariable | undefined {
+    // Check function parameters first.
+    if (params !== undefined) {
+      for (const p of params) {
+        if (p.name === name) {
+          return {
+            source: "parameter",
+            name: p.name,
+            varType: p.varType,
+            docs: [],
+          };
+        }
+      }
+    }
+
     for (const stmt of bodyStmts) {
       if (stmt.kind !== "LocalDecl") continue;
       if (stmt.name === name && stmt.span.line <= beforeLine) {

@@ -6,3 +6,6 @@ export type { ASTPath } from "./find-node.js";
 export { SymbolTable } from "./symbol-table.js";
 export type { ResolvedFunction, ResolvedVariable, ResolvedSymbol } from "./symbol-table.js";
 export { getHoverContent } from "./hover.js";
+export { getSemanticTokens, semanticTokensLegend } from "./semantic-tokens.js";
+export { validateSymbols } from "./validation.js";
+export type { ValidationDiagnostic } from "./validation.js";

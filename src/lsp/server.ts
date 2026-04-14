@@ -6,6 +6,7 @@ import { publishDiagnostics } from "./diagnostics.js";
 import { getCompletionItems } from "./completion.js";
 import { findNodePath } from "./find-node.js";
 import { getHoverContent } from "./hover.js";
+import { getSemanticTokens, semanticTokensLegend } from "./semantic-tokens.js";
 
 /**
  * Start the mt-sdk language server.
@@ -25,6 +26,10 @@ export function startServer(): void {
         // Capabilities are added here as each feature is implemented.
         completionProvider: { triggerCharacters: ["@", "$"] },
         hoverProvider: true,
+        semanticTokensProvider: {
+          legend: semanticTokensLegend,
+          full: true,
+        },
       },
       serverInfo: {
         name: "mt-sdk-lsp",
@@ -71,6 +76,14 @@ export function startServer(): void {
     // TODO: getHoverContent needs a document-specific SDK registered to the Symbol Table, probably, 
     // since the SDK docs are based on that document's sdkVersion and productFamily.
     return getHoverContent(doc.parsed.ast, path, position.line + 1, position.character + 1);
+  });
+
+  // --- Semantic tokens -------------------------------------------------------
+
+  connection.languages.semanticTokens.on(({ textDocument }) => {
+    const doc = store.get(textDocument.uri);
+    if (doc === undefined) return { data: [] };
+    return getSemanticTokens(doc.parsed.ast);
   });
 
   connection.listen();

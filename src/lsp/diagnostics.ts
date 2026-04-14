@@ -2,6 +2,8 @@ import type { Connection, Diagnostic, Range } from "vscode-languageserver/node.j
 import { DiagnosticSeverity } from "vscode-languageserver/node.js";
 import type { LangDiagnostic, Span } from "../lang/index.js";
 import type { DocumentStore } from "./document-store.js";
+import { validateSymbols } from "./validation.js";
+import type { ValidationDiagnostic } from "./validation.js";
 
 function spanToRange(span: Span): Range {
   return {
@@ -10,10 +12,29 @@ function spanToRange(span: Span): Range {
   };
 }
 
+/**
+ * Converts a Language Diagnostic to a VSCode Diagnostic object
+ * @param d 
+ * @returns 
+ */
 function toVSCodeDiagnostic(d: LangDiagnostic): Diagnostic {
   return {
     severity: d.level === "error" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
     range: d.span ? spanToRange(d.span) : { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+    message: d.message,
+    source: "mt-sdk",
+  };
+}
+
+/**
+ * Converts a Validation Diagnostic to a VSCode diagnostic
+ * @param d 
+ * @returns 
+ */
+function validationToVSCodeDiagnostic(d: ValidationDiagnostic): Diagnostic {
+  return {
+    severity: d.level === "error" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+    range: spanToRange(d.span),
     message: d.message,
     source: "mt-sdk",
   };
@@ -32,5 +53,13 @@ export function publishDiagnostics(
   if (!doc) return;
 
   const diagnostics: Diagnostic[] = doc.parsed.diagnostics.map(toVSCodeDiagnostic);
+
+  // Symbol resolution validation pass
+  const validationDiags = validateSymbols(doc.parsed.ast);
+  
+  for (const d of validationDiags) {
+    diagnostics.push(validationToVSCodeDiagnostic(d));
+  }
+
   connection.sendDiagnostics({ uri, diagnostics });
 }
