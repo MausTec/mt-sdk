@@ -55,13 +55,16 @@ function buildPlugin(cwd: string): void {
     }
   }
 
+  const warnings = diagnostics.filter((d: LangDiagnostic) => d.level === "warning");
   const errors = diagnostics.filter((d: LangDiagnostic) => d.level === "error");
 
   if (errors.length > 0) {
-    error(`Transpilation failed with ${errors.length} error(s).`);
+    error(`Transpilation failed with ${errors.length} error(s)${warnings.length > 0 ? ` and ${warnings.length} warning(s)` : ""}`);
     console.log(JSON.stringify(plugin, null, 2));
     process.exitCode = 1;
     return;
+  } else if (warnings.length > 0) {
+    warn(`Transpilation completed with ${warnings.length} warning(s).`);
   }
 
   success("Transpilation complete. Output:");

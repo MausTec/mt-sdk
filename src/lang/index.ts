@@ -35,6 +35,7 @@ export type { EmitResult } from "./emitter.js";
 
 import type { LangDiagnostic } from "./diagnostics.js";
 import type { PluginNode } from "./ast.js";
+import { validateSymbols } from "../lsp/validation.js";
 
 export interface TranspileResult {
   plugin: MtpPlugin;
@@ -70,6 +71,7 @@ export function emitPlugin(ast: PluginNode): { plugin: MtpPlugin; diagnostics: L
  */
 export function transpile(source: string): TranspileResult {
   const { ast, diagnostics: parseDiags } = parseSource(source);
+  const validateDiags = validateSymbols(ast);
   const { plugin, diagnostics: emitDiags } = emitPlugin(ast);
-  return { plugin, diagnostics: [...parseDiags, ...emitDiags] };
+  return { plugin, diagnostics: [...parseDiags, ...validateDiags, ...emitDiags] };
 }
