@@ -405,7 +405,7 @@ class Lexer {
 }
 
 /**
- * Lex a `.mtpl` source string into a flat token array.
+ * Lex a `.mtp` source string into a flat token array.
  *
  * Unrecognised characters produce an `error` diagnostic and
  * are skipped rather than throwing. The final token is always `EOF`.

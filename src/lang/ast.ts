@@ -261,7 +261,7 @@ export interface OnNode extends BaseNode {
 
 // --- Root ---------------------------------------------------------------------
 
-/** Root AST node produced by parsing a single `.mtpl` file. */
+/** Root AST node produced by parsing a single `.mtp` file. */
 export interface PluginNode extends BaseNode {
   kind: "Plugin";
   displayName: string | null;

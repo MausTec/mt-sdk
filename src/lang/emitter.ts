@@ -1,9 +1,10 @@
 import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl as _GlobalDecl, DefNode, Expr, OnNode, FnNode, Stmt } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
+import type { MtpPlugin } from "../core/mtp-types.js";
 
 export interface EmitResult {
-  plugin: Record<string, unknown>;
+  plugin: MtpPlugin;
   diagnostics: LangDiagnostic[];
 }
 
@@ -17,6 +18,7 @@ interface FieldDef {
    */
   array?: true;
 }
+
 
 /**
  * Known metadata fields inside a `defplugin` body.
@@ -105,7 +107,7 @@ class Emitter {
       plugin["events"] = this.emitHandlers(ast.handlers);
     }
 
-    return { plugin, diagnostics: this.diagnostics };
+    return { plugin: plugin as MtpPlugin, diagnostics: this.diagnostics };
   }
 
   private emitConfigBlock(block: ConfigBlockNode): Record<string, unknown> {

@@ -1,6 +1,7 @@
 import { lex } from "./lexer.js";
 import { parse } from "./parser.js";
 import { emit } from "./emitter.js";
+import type { MtpPlugin } from "../core/mtp-types.js";
 
 // --- Re-exports ---------------------------------------------------------------
 
@@ -36,14 +37,14 @@ import type { LangDiagnostic } from "./diagnostics.js";
 import type { PluginNode } from "./ast.js";
 
 export interface TranspileResult {
-  plugin: Record<string, unknown>;
+  plugin: MtpPlugin;
   diagnostics: LangDiagnostic[];
 }
 
 // --- Public API ---------------------------------------------------------------
 
 /**
- * Parse `.mtpl` source text and return an AST with diagnostics.
+ * Parse `.mtp` source text and return an AST with diagnostics.
  * This is the entry point for the LSP (which only needs the AST).
  * Never throws.
  */
@@ -58,7 +59,7 @@ export function parseSource(source: string): { ast: PluginNode; diagnostics: Lan
  * Exposed separately so the LSP can parse once and re-emit on change.
  * Never throws.
  */
-export function emitPlugin(ast: PluginNode): { plugin: Record<string, unknown>; diagnostics: LangDiagnostic[] } {
+export function emitPlugin(ast: PluginNode): { plugin: MtpPlugin; diagnostics: LangDiagnostic[] } {
   return emit(ast);
 }
 
