@@ -343,6 +343,19 @@ class Parser {
     const nameToken = this.advance();
     const params = this.parseDefParams();
 
+    // Optional return type annotation: `: type`
+    let returnType: VarType | null = null;
+
+    if (this.check(TokenKind.Colon)) {
+      this.advance(); // consume `:`
+
+      if (TYPE_KEYWORDS.has(this.peek().kind)) {
+        returnType = TYPE_KEYWORDS.get(this.advance().kind)!;
+      } else {
+        this.diagnostics.push(langError("Expected type keyword after `:` in return type", this.peek().span));
+      }
+    }
+
     this.expectDoAndNewline(`after \`def ${nameToken.value}(...)\``);
 
     const body = this.parseBlockBody(false);
@@ -355,6 +368,7 @@ class Parser {
       name: nameToken.value,
       nameSpan: nameToken.span,
       params,
+      returnType,
       body,
     };
   }
@@ -413,6 +427,18 @@ class Parser {
 
     const params = this.parseDefParams();
 
+    // Optional return type annotation: `: type`
+    let returnType: VarType | null = null;
+
+    if (this.check(TokenKind.Colon)) {
+      this.advance(); // consume `:`
+      if (TYPE_KEYWORDS.has(this.peek().kind)) {
+        returnType = TYPE_KEYWORDS.get(this.advance().kind)!;
+      } else {
+        this.diagnostics.push(langError("Expected type keyword after `:` in return type", this.peek().span));
+      }
+    }
+
     this.expect(TokenKind.Arrow, `after \`fn ${nameToken.value}(...)\``);
 
     const bodyExpr = this.parseExpr();
@@ -429,6 +455,7 @@ class Parser {
       name: nameToken.value,
       nameSpan: nameToken.span,
       params,
+      returnType,
       body: bodyExpr,
     };
   }
@@ -994,9 +1021,17 @@ class Parser {
    * When `insideControlFlow` is true, local variable declarations are rejected.
    */
   private parseStmt(docs: string[], insideControlFlow = false): Stmt | null {
-    const t = this.peek();
+    let t = this.peek();
+    let statementIsConst = false;
 
     if (t.kind === TokenKind.End || t.kind === TokenKind.Else || t.kind === TokenKind.EOF) return null;
+
+    // Const-qualified local: `const type name = expr`
+    if (t.kind === TokenKind.Const) {
+      statementIsConst = true;
+      this.advance(); // consume `const`
+      t = this.peek();
+    }
 
     // Local variable declaration: `type name` / `type name = expr`
     if (TYPE_KEYWORDS.has(t.kind)) {
@@ -1012,8 +1047,14 @@ class Parser {
         return null;
       }
 
-      const stmt = this.parseLocalDecl(docs);
+      const stmt = this.parseLocalDecl(docs, statementIsConst);
       if (stmt === null) return null;
+
+      if (statementIsConst && stmt.init === null) {
+        this.diagnostics.push(
+          langError("`const` declarations must have an initializer", stmt.nameSpan),
+        );
+      }
 
       // Declarations cannot have postfix guards — error and recover
       if (this.check(TokenKind.If) || this.check(TokenKind.Unless)) {
@@ -1025,6 +1066,13 @@ class Parser {
       }
 
       return stmt;
+    } else if (statementIsConst) {
+      this.diagnostics.push(
+        langError("Expected type keyword after `const`, got: " + t.value, t.span),
+      );
+
+      this.skipToNextLine();
+      return null;
     }
 
     // Unknown block-like construct: `identifier ... do ... end` (e.g. `while`, `for`)
@@ -1096,6 +1144,19 @@ class Parser {
         value,
         span: mergeSpan(nameTok.span, value.span),
       } satisfies AssignGlobalStmt;
+    }
+
+    // @name = expr  (config assign — always an error, config is read-only)
+    if (t.kind === TokenKind.ConfigRef && ahead.kind === TokenKind.Assign) {
+      const nameTok = this.advance(); // @name
+      this.advance();                 // =
+      // Still parse the value expression to keep the parser in a good state
+      this.parseExpr();
+
+      this.diagnostics.push(
+        langError(`Cannot assign to config variable \`@${nameTok.value}\`, you must explicitly call \`setConfig("${nameTok.value}", value)\``, nameTok.span),
+      );
+      return null;
     }
 
     // name = expr  (local assign)
@@ -1292,7 +1353,7 @@ class Parser {
   }
 
   /** Parse `type name` or `type name = expr` as a local variable declaration. */
-  private parseLocalDecl(docs: string[]): LocalDeclStmt | null {
+  private parseLocalDecl(docs: string[], isConst = false): LocalDeclStmt | null {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
@@ -1364,6 +1425,7 @@ class Parser {
       name: nameToken.value,
       nameSpan: nameToken.span,
       arraySize,
+      isConst,
       init,
     };
   }

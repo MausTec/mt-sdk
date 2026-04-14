@@ -133,6 +133,8 @@ export interface LocalDeclStmt extends BaseNode {
   nameSpan: Span;
   /** `null` for scalar, positive integer for fixed-size array. */
   arraySize: number | null;
+  /** Whether this was declared with `const`. */
+  isConst: boolean;
   init: Expr | null;
 }
 
@@ -250,6 +252,7 @@ export interface FnNode extends BaseNode {
   nameSpan: Span;
   params: DefParam[];
   docs: string[];
+  returnType: VarType | null;
   body: Expr;
 }
 
@@ -267,6 +270,7 @@ export interface DefNode extends BaseNode {
   name: string;
   nameSpan: Span;
   params: DefParam[];
+  returnType: VarType | null;
   body: Stmt[];
 }
 

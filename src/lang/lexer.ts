@@ -35,6 +35,7 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["string",    TokenKind.TypeString],
   ["true",      TokenKind.True],
   ["false",     TokenKind.False],
+  ["const",     TokenKind.Const],
 ]);
 
 // --- Character helpers --------------------------------------------------------

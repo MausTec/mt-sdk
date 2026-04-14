@@ -27,6 +27,9 @@ export enum TokenKind {
   Unless = "unless",
   Return = "return",
 
+  // --- Modifier keywords -----------------------------------------------------
+  Const = "const",
+
   // --- Logic keywords --------------------------------------------------------
   And = "and",
   Or = "or",

@@ -187,22 +187,36 @@ class Emitter {
    */
   private emitDef(def: DefNode): Record<string, unknown> {
     const { vars, initActions } = this.extractLocals(def.body);
-    return {
+
+    const result: Record<string, unknown> = {
       args: def.params.map(p => p.name),
       vars,
       actions: initActions,
     };
+
+    if (def.returnType !== null) {
+      result.returnType = def.returnType;
+    }
+
+    return result;
   }
 
   private emitFn(fn: FnNode): Record<string, unknown> {
-    return {
+    const result: Record<string, unknown> = {
       args: fn.params.map(p => p.name),
       actions: [],
     };
+    
+    if (fn.returnType !== null) {
+      result.returnType = fn.returnType;
+    }
+
+    return result;
   }
 
   private emitOnNode(handler: OnNode): Record<string, unknown> {
     const { vars, initActions } = this.extractLocals(handler.body);
+    
     return {
       vars,
       actions: initActions,
