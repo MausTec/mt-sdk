@@ -26,6 +26,7 @@ export interface ResolvedVariable {
   source: "config" | "global" | "local" | "parameter";
   name: string;
   varType: VarType;
+  readonly: boolean;
   docs: string[];
   /** For globals: array size if declared as fixed-size. */
   arraySize?: number | null;
@@ -62,7 +63,7 @@ export class SymbolTable {
         name: fn.name,
         params: fn.params,
         docs: fn.docs,
-        returnType: null,
+        returnType: fn.returnType,
         variant: "fn",
       });
     }
@@ -73,7 +74,7 @@ export class SymbolTable {
         name: def.name,
         params: def.params,
         docs: def.docs,
-        returnType: null,
+        returnType: def.returnType,
         variant: "def",
       });
     }
@@ -85,6 +86,7 @@ export class SymbolTable {
           source: "config",
           name: decl.name,
           varType: decl.varType,
+          readonly: true,
           docs: decl.label !== null ? [decl.label] : [],
         });
       }
@@ -97,6 +99,7 @@ export class SymbolTable {
           source: "global",
           name: decl.name,
           varType: decl.varType,
+          readonly: false,
           docs: decl.label !== null ? [decl.label] : [],
           arraySize: decl.arraySize,
         });
@@ -175,6 +178,7 @@ export class SymbolTable {
             source: "parameter",
             name: p.name,
             varType: p.varType,
+            readonly: false,
             docs: [],
           };
         }
@@ -188,6 +192,7 @@ export class SymbolTable {
           source: "local",
           name: stmt.name,
           varType: stmt.varType,
+          readonly: stmt.isConst === true,
           docs: stmt.docs,
         };
       }

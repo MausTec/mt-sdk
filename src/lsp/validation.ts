@@ -10,6 +10,8 @@ import type {
 } from "../lang/ast.js";
 import { SymbolTable } from "./symbol-table.js";
 
+// TODO: Should the Validator be a concern of the LSP? Because this feels like a lang/ module concern the more I write it.
+
 // --- Diagnostic type ---------------------------------------------------------
 
 export interface ValidationDiagnostic {
@@ -17,6 +19,23 @@ export interface ValidationDiagnostic {
   message: string;
   span: Span;
 }
+
+// --- Known event names -------------------------------------------------------
+// TODO: This is NOT a source of truth! The runtime SDK declares this!
+
+const KNOWN_EVENTS = new Set([
+  "connect",
+  "disconnect",
+  "speedChange",
+  "modeSet",
+  "tick",
+  "start",
+  "stop",
+  "restart",
+  "error",
+  "airChange",
+  "pressureChange",
+]);
 
 // --- Body context (same shape as semantic-tokens) ----------------------------
 
@@ -98,6 +117,14 @@ function validateOn(
   symbols: SymbolTable,
   on: OnNode,
 ): void {
+  if (!KNOWN_EVENTS.has(on.event)) {
+    diags.push({
+      level: "warning",
+      message: `Unknown event \`${on.event}\``,
+      span: on.span,
+    });
+  }
+
   const ctx: BodyContext = { params: [], stmts: on.body };
 
   for (const stmt of on.body) {
@@ -133,6 +160,12 @@ function validateStmt(
         diags.push({
           level: "error",
           message: `Unknown variable \`${stmt.name}\``,
+          span: stmt.nameSpan,
+        });
+      } else if (resolved.readonly) {
+        diags.push({
+          level: "error",
+          message: `Cannot assign to read-only variable \`${stmt.name}\``,
           span: stmt.nameSpan,
         });
       }
@@ -232,7 +265,14 @@ function validateExpr(
       }
 
       const fn = symbols.resolveFunction(expr.name);
-      if (fn !== undefined) break;
+      if (fn !== undefined) {
+        diags.push({
+          level: "error",
+          message: `Cannot use function \`${expr.name}\` as a value, did you mean to call \`${expr.name}()\`?`,
+          span: expr.span,
+        });
+        break;
+      }
 
       diags.push({
         level: "error",
@@ -256,6 +296,15 @@ function validateExpr(
             endLine: expr.span.line,
             endCol: expr.span.col + expr.name.length,
           },
+        });
+      } else if (fn.params.length !== expr.args.length) {
+        const expected = fn.params.length;
+        const got = expr.args.length;
+
+        diags.push({
+          level: "error",
+          message: `\`${expr.name}\` expects ${expected} argument${expected !== 1 ? "s" : ""} but was called with ${got}`,
+          span: expr.span,
         });
       }
 
