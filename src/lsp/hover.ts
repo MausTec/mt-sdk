@@ -82,9 +82,13 @@ function findEnclosingBody(path: ASTPath): { stmts: Stmt[]; kind: "Def" | "On" }
 /**
  * Produce hover content for the deepest node in the AST path.
  *
+ * `line` and `col` are 1-based (matching Span conventions) and are used to
+ * suppress unhelpful hover on scope containers when the cursor is in a body
+ * gap (e.g. on a comment or blank line inside `on :event do ... end`).
+ *
  * Returns `null` when the node kind has no meaningful hover information.
  */
-export function getHoverContent(ast: PluginNode, path: ASTPath): Hover | null {
+export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, col: number): Hover | null {
   if (path.length === 0) return null;
 
   const symbols = SymbolTable.fromAST(ast);
@@ -191,7 +195,7 @@ export function getHoverContent(ast: PluginNode, path: ASTPath): Hover | null {
     }
 
     case "Pipe":
-      return mkHover(formatPipeHover(node, symbols), node.span);
+      return formatPipeStepHover(node, symbols, line, col);
 
     // --- Declarations --------------------------------------------------------
 
@@ -220,6 +224,9 @@ export function getHoverContent(ast: PluginNode, path: ASTPath): Hover | null {
       );
 
     case "Fn": {
+      // Only show hover on the header line, not on body gaps (comments, blanks).
+      if (line > node.span.line) return null;
+
       const resolved = symbols.resolveFunction(node.name);
 
       if (resolved !== undefined) {
@@ -230,6 +237,9 @@ export function getHoverContent(ast: PluginNode, path: ASTPath): Hover | null {
     }
 
     case "Def": {
+      // Only show hover on the header line, not on body gaps (comments, blanks).
+      if (line > node.span.line) return null;
+
       const resolved = symbols.resolveFunction(node.name);
 
       if (resolved !== undefined) {
@@ -240,10 +250,48 @@ export function getHoverContent(ast: PluginNode, path: ASTPath): Hover | null {
     }
 
     case "On":
+      // Only show hover on the header line, not on body gaps (comments, blanks).
+      if (line > node.span.line) return null;
       return mkHover(`\`\`\`mtp\non :${node.event}\n\`\`\`\n\nEvent handler`, node.span);
 
     // TODO: The atom in `on :event` should resolve to pull the event documentation from the SDK, including the event arg type.
     // TODO: The first $_ in the context of an event handler should resolve to the argument passed to the handler
+
+    // --- Assignment targets --------------------------------------------------
+
+    case "AssignGlobal": {
+      const resolved = symbols.resolveGlobal(node.name);
+
+      if (resolved === undefined) {
+        return mkHover(`\`\`\`mtp\n(global) $${node.name}\n\`\`\`\n\n*Unresolved global variable*`, node.span);
+      }
+
+      const typeLabel = resolved.arraySize != null
+        ? `${resolved.varType}[${resolved.arraySize}]`
+        : resolved.varType;
+      
+        return mkHover(
+        `\`\`\`mtp\n(global) ${typeLabel} $${resolved.name}\n\`\`\`` + formatDocs(resolved.docs),
+        node.span,
+      );
+    }
+
+    case "AssignLocal": {
+      const body = findEnclosingBody(path);
+      
+      if (body !== null) {
+        const local = symbols.resolveLocal(node.name, body.stmts, node.span.line);
+        
+        if (local !== undefined) {
+          return mkHover(
+            `\`\`\`mtp\n(local) ${local.varType} ${local.name}\n\`\`\`` + formatDocs(local.docs),
+            node.span,
+          );
+        }
+      }
+
+      return null;
+    }
 
     default:
       return null;
@@ -259,38 +307,58 @@ function formatFunctionHover(fn: import("./symbol-table.js").ResolvedFunction): 
   return `\`\`\`mtp\n${sig}\n\`\`\`${sourceTag}` + formatDocs(fn.docs);
 }
 
-function formatPipeHover(
+/**
+ * Produce a concise per-step pipe hover.
+ *
+ * Finds which `|>` the cursor is on by comparing the cursor position against
+ * each step's call span: the `|>` for step N sits between the end of step N-1
+ * (or the head) and the start of step N's call. We pick the step whose call
+ * starts *after* the cursor; if none qualifies we fall back to the last step.
+ */
+function formatPipeStepHover(
   node: import("../lang/ast.js").PipeExpr,
   symbols: SymbolTable,
-): string {
-  const lines: string[] = [];
-
-  // Head expression — show a brief summary
-  lines.push(`**Pipe chain** (${node.steps.length} step${node.steps.length !== 1 ? "s" : ""})`);
-  lines.push("");
-  lines.push("```mtp");
-
-  // Head
-  const headLabel = node.head.kind === "Identifier"
-    ? node.head.name
-    : node.head.kind === "Call"
-      ? `${node.head.name}(...)`
-      : node.head.kind === "Literal"
-        ? String(node.head.value)
-        : "expr";
-  lines.push(`  ${headLabel}`);
-
-  // Steps
-  for (const step of node.steps) {
-    const fn = symbols.resolveFunction(step.call.name);
-    const carriedLabel = step.carriedType !== "unknown" ? step.carriedType : "?";
-    const argList = step.call.args.length > 0 ? "(...)" : "()";
-    const resolvedHint = fn !== undefined && fn.returnType !== null ? ` -> ${fn.returnType}` : "";
-    lines.push(`|> ${step.call.name}${argList}  # carries: ${carriedLabel}${resolvedHint}`);
+  line: number,
+  col: number,
+): Hover | null {
+  // Determine which step the cursor's |> belongs to.
+  let stepIndex = node.steps.length - 1; // default: last step
+  
+  for (let i = 0; i < node.steps.length; i++) {
+    const callSpan = node.steps[i]!.call.span;
+    if (callSpan.line > line || (callSpan.line === line && callSpan.col > col)) {
+      stepIndex = i;
+      break;
+    }
   }
 
-  lines.push("```");
-  return lines.join("\n");
+  const step = node.steps[stepIndex]!;
+  const carriedLabel = step.carriedType !== "unknown" ? step.carriedType : "?";
+
+  // Describe the source: head expression or previous step's function.
+  let fromLabel: string;
+  
+  if (stepIndex === 0) {
+    const h = node.head;
+    fromLabel = h.kind === "Identifier" ? h.name
+      : h.kind === "Call" ? `${h.name}()`
+      : h.kind === "Literal" ? String(h.value)
+      : "expr";
+  } else {
+    fromLabel = `${node.steps[stepIndex - 1]!.call.name}()`;
+  }
+
+  // Describe where the carried value lands in the next call.
+  const hasExplicitAccumulator = step.call.args.some(
+    a => a.kind === "Accumulator",
+  );
+
+  const intoHint = hasExplicitAccumulator ? "into `$_`" : "as arg 0";
+
+  const md =
+    `**\`|>\`** pipe — carries \`${carriedLabel}\` from \`${fromLabel}\` ${intoHint} of \`${step.call.name}()\``;
+
+  return mkHover(md, node.span);
 }
 
 // --- Pipe carried-type resolution --------------------------------------------
@@ -319,5 +387,6 @@ function resolvePipeCarriedType(path: ASTPath): string | null {
       return null;
     }
   }
+  
   return null;
 }

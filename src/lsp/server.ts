@@ -70,7 +70,7 @@ export function startServer(): void {
 
     // TODO: getHoverContent needs a document-specific SDK registered to the Symbol Table, probably, 
     // since the SDK docs are based on that document's sdkVersion and productFamily.
-    return getHoverContent(doc.parsed.ast, path);
+    return getHoverContent(doc.parsed.ast, path, position.line + 1, position.character + 1);
   });
 
   connection.listen();

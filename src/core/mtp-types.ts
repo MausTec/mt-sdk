@@ -62,7 +62,7 @@ export type MtpFunctionDef = MtpAction[] | MtpFunctionDefObject;
 
 export interface MtpFunctionDefObject {
   comment?: string;
-  vars?: MtpVariables;
+  vars?: string[];
   args?: string[];
   actions: MtpAction[];
 }
