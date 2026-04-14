@@ -17,6 +17,7 @@ export type Expr =
   | ErrorCodeExpr
   | ConfigRefExpr
   | IdentifierExpr
+  | IndexExpr
   | BinaryExpr
   | UnaryExpr
   | CallExpr
@@ -54,6 +55,13 @@ export interface ConfigRefExpr extends BaseNode {
 export interface IdentifierExpr extends BaseNode {
   kind: "Identifier";
   name: string;
+}
+
+/** `name[expr]` or `$name[expr]` - array index access. */
+export interface IndexExpr extends BaseNode {
+  kind: "Index";
+  target: Expr;
+  index: Expr;
 }
 
 export type BinaryOp =
@@ -123,6 +131,8 @@ export interface LocalDeclStmt extends BaseNode {
   varType: VarType;
   name: string;
   nameSpan: Span;
+  /** `null` for scalar, positive integer for fixed-size array. */
+  arraySize: number | null;
   init: Expr | null;
 }
 

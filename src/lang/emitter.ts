@@ -166,11 +166,15 @@ class Emitter {
     for (const stmt of body) {
       if (stmt.kind !== "LocalDecl") continue;
 
-      vars.push(stmt.name);
+      if (stmt.arraySize !== null) {
+        vars.push(`${stmt.name}[${stmt.arraySize}]`);
+      } else {
+        vars.push(stmt.name);
 
-      if (stmt.init !== null) {
-        const entry: Record<string, unknown> = { set: { [`$${stmt.name}`]: exprToJson(stmt.init) } };
-        initActions.push(entry);
+        if (stmt.init !== null) {
+          const entry: Record<string, unknown> = { set: { [`$${stmt.name}`]: exprToJson(stmt.init) } };
+          initActions.push(entry);
+        }
       }
     }
 

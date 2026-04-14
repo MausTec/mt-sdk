@@ -42,7 +42,7 @@ defplugin "Test" do
   end
 end`;
     const errs = parseErrors(src);
-    expect(errs).toContain("Expected newline after `do` — code must start on the next line");
+    expect(errs).toContain("Unexpected token after `do`, only comments are allowed");
   });
 
   it("rejects code on the same line as `do` in an if block", () => {
@@ -54,7 +54,7 @@ defplugin "Test" do
   end
 end`;
     const errs = parseErrors(src);
-    expect(errs).toContain("Expected newline after `do` — code must start on the next line");
+    expect(errs).toContain("Unexpected token after `do`, only comments are allowed");
   });
 
   it("allows a comment after `do`", () => {
@@ -65,7 +65,7 @@ defplugin "Test" do
   end
 end`;
     const errs = parseErrors(src);
-    expect(errs.filter((e) => e.includes("newline after"))).toHaveLength(0);
+    expect(errs.filter((e) => e.includes("after `do`"))).toHaveLength(0);
   });
 
   it("allows `do` followed by a blank line", () => {
@@ -77,7 +77,7 @@ defplugin "Test" do
   end
 end`;
     const errs = parseErrors(src);
-    expect(errs.filter((e) => e.includes("newline after"))).toHaveLength(0);
+    expect(errs.filter((e) => e.includes("after `do`"))).toHaveLength(0);
   });
 });
 
@@ -183,7 +183,7 @@ defplugin "Test" do
 end`;
     const errs = parseErrors(src);
     expect(errs).toContain(
-      "Only `int` arrays are supported — `string` and `bool` arrays cannot be allocated",
+      "Only `int` arrays are supported",
     );
   });
 
@@ -196,7 +196,7 @@ defplugin "Test" do
 end`;
     const errs = parseErrors(src);
     expect(errs).toContain(
-      "Only `int` arrays are supported — `string` and `bool` arrays cannot be allocated",
+      "Only `int` arrays are supported",
     );
   });
 
@@ -373,4 +373,180 @@ end`;
     expect(plugin.config?.["enabled"]?.type).toBe("bool");
     expect(plugin.config?.["label"]?.type).toBe("string");
   });
+});
+
+// --- Phase 2 — Local arrays & index expressions -----------------------------
+
+describe("Phase 2: local array declarations", () => {
+  it("parses a local int array declaration", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int[10] buffer
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs.filter((e) => e.includes("array") || e.includes("bracket"))).toHaveLength(0);
+  });
+
+  it("rejects local string arrays", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    string[20] buf
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toContain(
+      "Only `int` arrays are supported",
+    );
+  });
+
+  it("rejects local bool arrays", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    bool[8] flags
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toContain(
+      "Only `int` arrays are supported",
+    );
+  });
+
+  it("rejects unsized local arrays", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int[] items
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs.some((e) => e.includes("size"))).toBe(true);
+  });
+
+  it("rejects initializer on local array declarations", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int[10] buffer = 0
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs.some((e) => e.includes("cannot have an initializer") || e.includes("zero-initialized"))).toBe(true);
+  });
+});
+
+describe("Phase 2: local arrays emit correctly", () => {
+  it("emits name[size] in vars and no init action for array locals", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int[100] tape
+    int x = 5
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"];
+    const def = fn as { vars?: string[]; actions?: unknown[] };
+    expect(def.vars).toContain("tape[100]");
+    expect(def.vars).toContain("x");
+    expect(def.actions).toContainEqual({ set: { $x: 5 } });
+    // No init action for tape — runtime zero-initializes arrays
+    expect(def.actions?.some((a) =>
+      typeof a === "object" && a !== null && "set" in a &&
+      typeof (a as Record<string, unknown>).set === "object" &&
+      "$tape" in ((a as Record<string, unknown>).set as Record<string, unknown>),
+    )).toBe(false);
+  });
+
+  it("emits name[size] in vars for on-block array locals", () => {
+    const src = `
+defplugin "Test" do
+  on :connect do
+    int[50] buffer
+  end
+end`;
+    const plugin = transpileOk(src);
+    const handler = plugin.events?.["connect"] as { vars?: string[] };
+    expect(handler.vars).toContain("buffer[50]");
+  });
+});
+
+describe("Phase 2: index expressions in conditions and assignments", () => {
+  it("parses array index access in an expression", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int[10] data = 0
+  end
+
+  def check() do
+    if data[0] > 5 do
+      data[0] = 10
+    end
+  end
+end`;
+    // Should parse without bracket-related errors
+    const errs = parseErrors(src);
+    expect(errs.filter((e) => e.includes("[") || e.includes("]") || e.includes("bracket"))).toHaveLength(0);
+  });
+
+  it("parses array index with a variable index", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int[10] data = 0
+  end
+
+  def scan() do
+    int i = 0
+    if data[i] > 0 do
+      i = 1
+    end
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs.filter((e) => e.includes("[") || e.includes("]") || e.includes("bracket"))).toHaveLength(0);
+  });
+
+  it("parses a complex index expression in a condition and assignment", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int[10] data = 0
+  end
+
+  def scan() do
+    int i = 0
+    if data[i + 1] > 0 do
+      data[i + 1] = 5
+    end
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toHaveLength(0);
+    expect(errs.filter((e) => e.includes("[") || e.includes("]") || e.includes("bracket"))).toHaveLength(0);
+  });
+
+  it("parses index access with variables and nested expressions in parenthesis", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int[10] data = 0
+  end
+
+  def scan() do
+    int i = 0
+    if data[(i + 1) * 2] > 0 do
+      data[(i + 1) * 2] = 5
+    end
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toHaveLength(0);
+    expect(errs.filter((e) => e.includes("[") || e.includes("]") || e.includes("bracket"))).toHaveLength(0);
+  });
+
 });

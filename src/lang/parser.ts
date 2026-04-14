@@ -7,6 +7,7 @@ import type {
   Expr, 
   LiteralExpr, 
   IdentifierExpr, 
+  IndexExpr,
   ConfigBlockNode, 
   ConfigDecl, 
   GlobalsBlockNode, 
@@ -868,7 +869,14 @@ class Parser {
     // Sigils
     if (t.kind === TokenKind.GlobalVar) {
       this.advance();
-      return { kind: "GlobalVar", name: t.value, span: t.span } satisfies GlobalVarExpr;
+      let expr: Expr = { kind: "GlobalVar", name: t.value, span: t.span } satisfies GlobalVarExpr;
+
+      // Postfix index: `$name[expr]`
+      if (this.check(TokenKind.LBracket)) {
+        expr = this.parseIndexSuffix(expr);
+      }
+
+      return expr;
     }
 
     if (t.kind === TokenKind.Accumulator) {
@@ -899,8 +907,15 @@ class Parser {
           span: mergeSpan(t.span, this.peekAhead(-1).span),
         } satisfies CallExpr;
       }
-      
-      return { kind: "Identifier", name: t.value, span: t.span } satisfies IdentifierExpr;
+
+      let expr: Expr = { kind: "Identifier", name: t.value, span: t.span } satisfies IdentifierExpr;
+
+      // Postfix index: `name[expr]`
+      if (this.check(TokenKind.LBracket)) {
+        expr = this.parseIndexSuffix(expr);
+      }
+
+      return expr;
     }
 
     return null;
@@ -923,6 +938,26 @@ class Parser {
 
     this.expect(TokenKind.RParen, "to close argument list");
     return args;
+  }
+
+  /** Parse `[expr]` suffix on an already-parsed target expression. */
+  private parseIndexSuffix(target: Expr): IndexExpr {
+    this.advance(); // consume `[`
+    const index = this.parseExpr(0);
+
+    if (!index) {
+      this.diagnostics.push(langError("Expected index expression inside `[]`", this.peek().span));
+    }
+
+    const closeBracket = this.peek();
+    this.expect(TokenKind.RBracket, "to close index expression");
+
+    return {
+      kind: "Index",
+      target,
+      index: index ?? { kind: "Literal", varType: "int", value: 0, span: closeBracket.span },
+      span: mergeSpan(target.span, closeBracket.span),
+    };
   }
 
   // --- Block body ------------------------------------------------------------
@@ -1100,6 +1135,26 @@ class Parser {
     }
 
     if (this.check(TokenKind.Assign)) {
+      // Index assignment: `name[expr] = value` or `$name[expr] = value`
+      if (expr.kind === "Index") {
+        this.advance(); // consume `=`
+        const value = this.parseExpr();
+
+        if (!value) {
+          this.diagnostics.push(langError("Expected value after `=` in index assignment", this.peek().span));
+          this.skipToNextLine();
+          return null;
+        }
+
+        // Emit as an ExprStmt wrapping a synthetic representation — the emitter
+        // will eventually lower this to a `setbyte` action.
+        return {
+          kind: "ExprStmt",
+          expr: { ...expr, span: mergeSpan(expr.span, value.span) },
+          span: mergeSpan(expr.span, value.span),
+        } satisfies ExprStmt;
+      }
+
       this.diagnostics.push(langError("Unexpected `=` in statement: assignment must be `name = value`", this.peek().span));
       this.skipToNextLine();
       return null;
@@ -1241,6 +1296,31 @@ class Parser {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
+    // Optional array size: `int[4] name`
+    let arraySize: number | null = null;
+
+    if (this.check(TokenKind.LBracket)) {
+      this.advance();
+      const sizeToken = this.peek();
+
+      if (sizeToken.kind === TokenKind.Integer) {
+        arraySize = parseInt(sizeToken.value, 10);
+        this.advance();
+      } else if (sizeToken.kind === TokenKind.RBracket) {
+        this.diagnostics.push(langError("Array size is required", sizeToken.span));
+      } else {
+        this.diagnostics.push(langError("Expected integer array size", sizeToken.span));
+      }
+
+      this.expect(TokenKind.RBracket, "after array size");
+
+      if (varType !== "int") {
+        this.diagnostics.push(
+          langError("Only `int` arrays are supported", typeToken.span),
+        );
+      }
+    }
+
     if (!this.check(TokenKind.Identifier)) {
       this.diagnostics.push(
         langError("Expected name after type in local declaration", this.peek().span),
@@ -1253,6 +1333,15 @@ class Parser {
     let init: Expr | null = null;
 
     if (this.check(TokenKind.Assign)) {
+      if (arraySize !== null) {
+        this.diagnostics.push(
+          langError("Array declarations cannot have an initializer", this.peek().span),
+        );
+
+        this.skipToNextLine();
+        return null;
+      }
+
       this.advance(); // consume `=`
       init = this.parseExpr();
       if (!init) {
@@ -1274,6 +1363,7 @@ class Parser {
       varType,
       name: nameToken.value,
       nameSpan: nameToken.span,
+      arraySize,
       init,
     };
   }
