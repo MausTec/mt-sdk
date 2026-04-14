@@ -122,6 +122,7 @@ export interface LocalDeclStmt extends BaseNode {
   docs: string[];
   varType: VarType;
   name: string;
+  nameSpan: Span;
   init: Expr | null;
 }
 
@@ -129,6 +130,7 @@ export interface LocalDeclStmt extends BaseNode {
 export interface AssignLocalStmt extends BaseNode {
   kind: "AssignLocal";
   name: string;
+  nameSpan: Span;
   value: Expr;
 }
 
@@ -136,6 +138,7 @@ export interface AssignLocalStmt extends BaseNode {
 export interface AssignGlobalStmt extends BaseNode {
   kind: "AssignGlobal";
   name: string;
+  nameSpan: Span;
   value: Expr;
 }
 
@@ -178,6 +181,7 @@ export interface ConfigDecl extends BaseNode {
   label: string | null;
   varType: VarType;
   name: string;
+  nameSpan: Span;
   default: Expr;
   constraints: Record<string, Expr>;
 }
@@ -188,6 +192,7 @@ export interface GlobalDecl extends BaseNode {
   label: string | null;
   varType: VarType;
   name: string;
+  nameSpan: Span;
   /** `null` for scalar, positive integer for fixed-size array. */
   arraySize: number | null;
   init: Expr;
@@ -232,6 +237,7 @@ export interface MetadataFieldNode extends BaseNode {
 export interface FnNode extends BaseNode {
   kind: "Fn";
   name: string;
+  nameSpan: Span;
   params: DefParam[];
   docs: string[];
   body: Expr;
@@ -241,6 +247,7 @@ export interface FnNode extends BaseNode {
 export interface DefParam {
   varType: VarType;
   name: string;
+  span: Span;
 }
 
 /** `def name(type arg, ...) do ... end` — effectful multi-statement function. */
@@ -248,6 +255,7 @@ export interface DefNode extends BaseNode {
   kind: "Def";
   docs: string[];
   name: string;
+  nameSpan: Span;
   params: DefParam[];
   body: Stmt[];
 }

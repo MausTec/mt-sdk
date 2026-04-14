@@ -329,6 +329,7 @@ class Parser {
       span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
       docs,
       name: nameToken.value,
+      nameSpan: nameToken.span,
       params,
       body,
     };
@@ -362,7 +363,7 @@ class Parser {
       }
 
       const nameToken = this.advance();
-      params.push({ varType, name: nameToken.value });
+      params.push({ varType, name: nameToken.value, span: nameToken.span });
       this.eat(TokenKind.Comma);
     }
 
@@ -402,6 +403,7 @@ class Parser {
       span: mergeSpan(kwToken.span, bodyExpr.span),
       docs,
       name: nameToken.value,
+      nameSpan: nameToken.span,
       params,
       body: bodyExpr,
     };
@@ -513,6 +515,7 @@ class Parser {
       label,
       varType,
       name: nameToken.value,
+      nameSpan: nameToken.span,
       arraySize,
       init: initExpr,
     };
@@ -598,6 +601,7 @@ class Parser {
       label,
       varType,
       name: nameToken.value,
+      nameSpan: nameToken.span,
       default: defaultExpr,
       constraints,
     };
@@ -1006,6 +1010,7 @@ class Parser {
       return {
         kind: "AssignGlobal",
         name: nameTok.value,
+        nameSpan: nameTok.span,
         value,
         span: mergeSpan(nameTok.span, value.span),
       } satisfies AssignGlobalStmt;
@@ -1026,6 +1031,7 @@ class Parser {
       return {
         kind: "AssignLocal",
         name: nameTok.value,
+        nameSpan: nameTok.span,
         value,
         span: mergeSpan(nameTok.span, value.span),
       } satisfies AssignLocalStmt;
@@ -1220,6 +1226,7 @@ class Parser {
       docs,
       varType,
       name: nameToken.value,
+      nameSpan: nameToken.span,
       init,
     };
   }
