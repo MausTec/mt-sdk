@@ -187,6 +187,29 @@ class Parser {
   }
 
   /**
+   * Consume `do` and enforce that the remainder of the line contains only
+   * whitespace or comments — no code is allowed after `do`.
+   */
+  private expectDoAndNewline(context: string): Token {
+    const doToken = this.expect(TokenKind.Do, context);
+
+    // After `do`, only comments and newlines are allowed on the same line.
+    const next = this.peek();
+    if (
+      next.kind !== TokenKind.Newline &&
+      next.kind !== TokenKind.Comment &&
+      next.kind !== TokenKind.EOF &&
+      next.kind !== TokenKind.End
+    ) {
+      this.diagnostics.push(
+        langError("Unexpected token after `do`, only comments are allowed", next.span),
+      );
+    }
+
+    return doToken;
+  }
+
+  /**
    * Consume inter-statement trivia (newlines and comments). Returns accumulated
    * doc-comment lines. A blank line (two consecutive newlines) resets the
    * accumulator, so only comments immediately preceding a construct survive.
@@ -226,7 +249,7 @@ class Parser {
       );
     }
 
-    this.expect(TokenKind.Do, "after defplugin display name");
+    this.expectDoAndNewline("after defplugin display name");
 
     const metadata: MetadataFieldNode[] = [];
 
@@ -319,9 +342,9 @@ class Parser {
     const nameToken = this.advance();
     const params = this.parseDefParams();
 
-    this.expect(TokenKind.Do, `after \`def ${nameToken.value}(...)\``);
+    this.expectDoAndNewline(`after \`def ${nameToken.value}(...)\``);
 
-    const body = this.parseBlockBody();
+    const body = this.parseBlockBody(false);
     const endToken = this.eat(TokenKind.End);
 
     return {
@@ -423,9 +446,9 @@ class Parser {
 
     const eventToken = this.advance();
 
-    this.expect(TokenKind.Do, `after \`on :${eventToken.value}\``);
+    this.expectDoAndNewline(`after \`on :${eventToken.value}\``);
 
-    const body = this.parseBlockBody();
+    const body = this.parseBlockBody(false);
     const endToken = this.eat(TokenKind.End);
 
     return {
@@ -440,7 +463,7 @@ class Parser {
 
   private parseGlobalsBlock(): GlobalsBlockNode {
     const kwToken = this.advance(); // consume `globals`
-    this.expect(TokenKind.Do, "after `globals`");
+    this.expectDoAndNewline("after `globals`");
 
     const declarations: GlobalDecl[] = [];
 
@@ -449,7 +472,7 @@ class Parser {
       if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
 
       if (TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseGlobalDecl(docs.at(-1) ?? null);
+        const decl = this.parseGlobalDecl(docs.length > 0 ? docs.join("\n") : null);
 
         if (decl) declarations.push(decl);
         continue;
@@ -487,6 +510,12 @@ class Parser {
       }
 
       this.expect(TokenKind.RBracket, "after array size");
+
+      if (varType !== "int") {
+        this.diagnostics.push(
+          langError("Only `int` arrays are supported", typeToken.span),
+        );
+      }
     }
 
     if (!this.check(TokenKind.Identifier)) {
@@ -525,7 +554,7 @@ class Parser {
 
   private parseConfigBlock(): ConfigBlockNode {
     const kwToken = this.advance(); // consume `config`
-    this.expect(TokenKind.Do, "after `config`");
+    this.expectDoAndNewline("after `config`");
 
     const declarations: ConfigDecl[] = [];
 
@@ -535,7 +564,7 @@ class Parser {
 
       // Type keyword starts a declaration.
       if (TYPE_KEYWORDS.has(this.peek().kind)) {
-        const decl = this.parseConfigDecl(docs.at(-1) ?? null);
+        const decl = this.parseConfigDecl(docs.length > 0 ? docs.join("\n") : null);
 
         if (decl) declarations.push(decl);
         continue;
@@ -903,8 +932,12 @@ class Parser {
    * Uses `consumeTrivia()` to handle inter-statement whitespace and accumulate
    * doc comments for the following declaration. Stops (without consuming) when
    * a stop token (`end`, `EOF`, or any extra kinds from `stopAt`) is reached.
+   *
+   * When `insideControlFlow` is true, local variable declarations are rejected
+   * with a diagnostic. Variables must be declared at the top of a `def` or `on`
+   * block only.
    */
-  private parseBlockBody(...stopAt: TokenKind[]): Stmt[] {
+  private parseBlockBody(insideControlFlow: boolean, ...stopAt: TokenKind[]): Stmt[] {
     const stopSet = new Set([TokenKind.End, TokenKind.EOF, ...stopAt]);
     const stmts: Stmt[] = [];
 
@@ -912,7 +945,7 @@ class Parser {
       const docs = this.consumeTrivia();
       if (stopSet.has(this.peek().kind)) break;
 
-      const stmt = this.parseStmt(docs);
+      const stmt = this.parseStmt(docs, insideControlFlow);
       if (stmt !== null) stmts.push(stmt);
     }
 
@@ -922,14 +955,28 @@ class Parser {
   /**
    * Parse one statement. `docs` are accumulated doc-comment lines from the
    * preceding trivia, and are passed to statements that support them.
+   *
+   * When `insideControlFlow` is true, local variable declarations are rejected.
    */
-  private parseStmt(docs: string[]): Stmt | null {
+  private parseStmt(docs: string[], insideControlFlow = false): Stmt | null {
     const t = this.peek();
 
     if (t.kind === TokenKind.End || t.kind === TokenKind.Else || t.kind === TokenKind.EOF) return null;
 
     // Local variable declaration: `type name` / `type name = expr`
     if (TYPE_KEYWORDS.has(t.kind)) {
+      if (insideControlFlow) {
+        this.diagnostics.push(
+          langError(
+            "Variable declarations must only be at the top level of a `def` or `on` block",
+            t.span,
+          ),
+        );
+
+        this.skipToNextLine();
+        return null;
+      }
+
       const stmt = this.parseLocalDecl(docs);
       if (stmt === null) return null;
 
@@ -968,7 +1015,7 @@ class Parser {
           after.kind !== TokenKind.EOF && after.kind !== TokenKind.End &&
           after.kind !== TokenKind.Else) {
         this.diagnostics.push(
-          langError(`Unexpected \`${after.value || after.kind}\` after block — only a comment may follow \`end\``, after.span),
+          langError(`Unexpected \`${after.value || after.kind}\` after block, only a comment may follow \`end\``, after.span),
         );
 
         this.skipToNextLine();
@@ -1097,13 +1144,13 @@ class Parser {
       return null;
     }
 
-    this.expect(TokenKind.Do, "after if condition");
+    this.expectDoAndNewline("after if condition");
 
-    const then = this.parseBlockBody(TokenKind.Else);
+    const then = this.parseBlockBody(true, TokenKind.Else);
 
     let elseBranch: Stmt[] | null = null;
     if (this.eat(TokenKind.Else)) {
-      elseBranch = this.parseBlockBody();
+      elseBranch = this.parseBlockBody(true);
     }
 
     this.expect(TokenKind.End, "to close if block");

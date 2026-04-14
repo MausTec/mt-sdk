@@ -142,13 +142,10 @@ class Emitter {
 
     for (const decl of block.declarations) {
       if (decl.arraySize !== null) {
-        this.diagnostics.push(langWarning(
-          `Array globals are not yet supported in JSON output; "${decl.name}" will be skipped`,
-          decl.span,
-        ));
-        continue;
+        variables[`${decl.name}[${decl.arraySize}]`] = [];
+      } else {
+        variables[decl.name] = exprToJson(decl.init);
       }
-      variables[decl.name] = exprToJson(decl.init);
     }
 
     return variables;
