@@ -16,12 +16,16 @@ import type {
   Stmt,
 } from "../ast.js";
 import type {
+  MtpAction,
   MtpActionObject,
   MtpFunctionDef,
   MtpFunctionDefObject,
   MtpValue,
 } from "../../core/mtp-types.js";
 import type { EmitContext } from "./context.js";
+import { BlockEmitContext } from "./context.js";
+import { emitStatements } from "./statements.js";
+import { exprToValue, exprToActions } from "./expressions.js";
 
 // --- Helpers ------------------------------------------------------------------
 
@@ -98,15 +102,19 @@ export function extractLocals(body: Stmt[]): {
 
 /**
  * Emits a `def` block — multi-statement function.
- * Currently only extracts locals; statement compilation is TODO (statements.ts).
+ * Extracts locals for the vars list, then delegates body to the statement emitter.
  */
-export function emitDef(_ctx: EmitContext, def: DefNode): EmittedFunctionDef {
-  const { vars, initActions } = extractLocals(def.body);
+export function emitDef(ctx: EmitContext, def: DefNode): EmittedFunctionDef {
+  const blockCtx = new BlockEmitContext();
+  const { vars } = extractLocals(def.body);
+  const actions = emitStatements(def.body, blockCtx);
+
+  ctx.diagnostics.push(...blockCtx.diagnostics);
 
   const result: EmittedFunctionDef = {
     args: def.params.map((p) => p.name),
-    vars,
-    actions: initActions,
+    vars: [...vars, ...blockCtx.getTempVars()],
+    actions,
   };
 
   if (def.returnType !== null) {
@@ -118,13 +126,36 @@ export function emitDef(_ctx: EmitContext, def: DefNode): EmittedFunctionDef {
 
 /**
  * Emits a `fn` — pure single-expression function.
- * Expression body compilation is TODO (expressions.ts).
+ * The body expression is compiled and wrapped in an implicit return.
  */
-export function emitFn(_ctx: EmitContext, fn: FnNode): EmittedFunctionDef {
+export function emitFn(ctx: EmitContext, fn: FnNode): EmittedFunctionDef {
+  const blockCtx = new BlockEmitContext();
+
+  const simple = exprToValue(fn.body, blockCtx);
+  let actions: MtpAction[];
+
+  if (simple !== null) {
+    const ret = Object.create(null) as MtpActionObject;
+    ret.return = simple;
+    actions = [ret];
+  } else {
+    const exprActions = exprToActions(fn.body, blockCtx);
+    const ret = Object.create(null) as MtpActionObject;
+    ret.return = "$_";
+    actions = [...exprActions, ret];
+  }
+
+  ctx.diagnostics.push(...blockCtx.diagnostics);
+
   const result: EmittedFunctionDef = {
     args: fn.params.map((p) => p.name),
-    actions: [],
+    actions,
   };
+
+  const tempVars = blockCtx.getTempVars();
+  if (tempVars.length > 0) {
+    result.vars = tempVars;
+  }
 
   if (fn.returnType !== null) {
     result.returnType = fn.returnType;
@@ -137,17 +168,21 @@ export function emitFn(_ctx: EmitContext, fn: FnNode): EmittedFunctionDef {
 
 /**
  * Emits an `on :event` handler.
- * Body compilation is TODO (statements.ts).
+ * Extracts locals for vars, then delegates body to the statement emitter.
  */
 export function emitOnNode(
-  _ctx: EmitContext,
+  ctx: EmitContext,
   handler: OnNode,
 ): MtpFunctionDefObject {
-  const { vars, initActions } = extractLocals(handler.body);
+  const blockCtx = new BlockEmitContext();
+  const { vars } = extractLocals(handler.body);
+  const actions = emitStatements(handler.body, blockCtx);
+
+  ctx.diagnostics.push(...blockCtx.diagnostics);
 
   return {
-    vars,
-    actions: initActions,
+    vars: [...vars, ...blockCtx.getTempVars()],
+    actions,
   };
 }
 

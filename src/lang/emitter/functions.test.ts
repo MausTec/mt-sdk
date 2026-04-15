@@ -181,7 +181,7 @@ describe("emitDef", () => {
 // --- emitFn -------------------------------------------------------------------
 
 describe("emitFn", () => {
-  it("emits args and empty actions (body compilation not yet implemented)", () => {
+  it("emits expression body with implicit return", () => {
     const ctx = new EmitContext();
     const fn: FnNode = {
       kind: "Fn", name: "square", nameSpan: SPAN, docs: [],
@@ -192,8 +192,26 @@ describe("emitFn", () => {
     };
     const result = emitFn(ctx, fn);
     expect(result.args).toEqual(["x"]);
-    expect(result.actions).toEqual([]);
+    expect(result.actions).toEqual([
+      { mul: ["$x", "$x"] },
+      { return: "$_" },
+    ]);
     expect(result.returnType).toBe("int");
+  });
+
+  it("emits simple expression body as direct return", () => {
+    const ctx = new EmitContext();
+    const fn: FnNode = {
+      kind: "Fn", name: "zero", nameSpan: SPAN, docs: [],
+      params: [],
+      returnType: "int",
+      body: lit(0),
+      span: SPAN,
+    };
+    const result = emitFn(ctx, fn);
+    expect(result.actions).toEqual([
+      { return: 0 },
+    ]);
   });
 });
 
