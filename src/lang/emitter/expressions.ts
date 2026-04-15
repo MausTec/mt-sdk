@@ -1,26 +1,68 @@
-import type { Expr } from "../ast.js";
+import type {
+  Expr,
+  LiteralExpr,
+  GlobalVarExpr,
+  AccumulatorExpr,
+  ErrorCodeExpr,
+  IdentifierExpr,
+} from "../ast.js";
 import type { MtpAction, MtpValue } from "../../core/mtp-types.js";
 import type { EmitContext } from "./context.js";
 
+// --- Simple expressions -------------------------------------------------------
+
 /**
- * Convert a simple expression to an MtpValue (scalar).
- * Returns null if the expression is too complex to represent as a bare value
- * (e.g. arithmetic, calls), and the caller should fall back to emitting actions.
+ * Subset of {@link Expr} that can be represented as a bare {@link MtpValue}.
  *
- * TODO: Handle all leaf expression kinds:
- * - Literal    -> raw value (number, string, boolean)
- * - Identifier -> local variable name string
- * - GlobalVar  -> "$name"
- * - Accumulator -> "$_"
- * - ErrorCode  -> "$!"
- * - ConfigRef  -> "@name"
+ * Notably excludes:
+ * - ConfigRef  -- compiles to a `getPluginConfig` action, not a value
+ * - Binary, Unary, Call, Pipe, Index -- require action sequences
+ */
+export type SimpleExpr =
+  | LiteralExpr
+  | GlobalVarExpr
+  | AccumulatorExpr
+  | ErrorCodeExpr
+  | IdentifierExpr;
+
+const SIMPLE_KINDS: ReadonlySet<string> = new Set<SimpleExpr["kind"]>([
+  "Literal",
+  "GlobalVar",
+  "Accumulator",
+  "ErrorCode",
+  "Identifier",
+]);
+
+/** Type guard: true when `expr` can be converted to a bare MtpValue. */
+export function isSimpleExpr(expr: Expr): expr is SimpleExpr {
+  return SIMPLE_KINDS.has(expr.kind);
+}
+
+// --- exprToValue --------------------------------------------------------------
+
+/**
+ * Convert a simple (leaf) expression to an {@link MtpValue}.
+ * Returns `null` for any expression kind that requires action emission
+ * (ConfigRef, Binary, Unary, Call, Pipe, Index).
  */
 export function exprToValue(
-  _expr: Expr,
+  expr: Expr,
   _ctx: EmitContext,
 ): MtpValue | null {
-  // TODO: Implement in a future phase.
-  return null;
+  if (!isSimpleExpr(expr)) return null;
+
+  switch (expr.kind) {
+    case "Literal":
+      return expr.value;
+    case "GlobalVar":
+      return `$${expr.name}`;
+    case "Accumulator":
+      return "$_";
+    case "ErrorCode":
+      return "$!";
+    case "Identifier":
+      return `$${expr.name}`;
+  }
 }
 
 /**

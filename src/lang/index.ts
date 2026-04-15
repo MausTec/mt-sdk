@@ -1,6 +1,6 @@
 import { lex } from "./lexer.js";
 import { parse } from "./parser.js";
-import { emit } from "./emitter.js";
+import { emit } from "./emitter/index.js";
 import type { MtpPlugin } from "../core/mtp-types.js";
 
 // --- Re-exports ---------------------------------------------------------------
@@ -29,7 +29,7 @@ export type {
   VarType,
 } from "./ast.js";
 export type { ParseResult } from "./parser.js";
-export type { EmitResult } from "./emitter.js";
+export type { EmitResult } from "./emitter/index.js";
 
 // --- Orchestration types ------------------------------------------------------
 
