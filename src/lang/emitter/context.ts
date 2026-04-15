@@ -3,7 +3,7 @@ import { langError, langWarning } from "../diagnostics.js";
 
 /**
  * Shared context threaded through all sub-emitters.
- * Collects diagnostics and (in future phases) tracks scope/temp variables.
+ * Collects diagnostics and serves as the base for block-level contexts.
  */
 export class EmitContext {
   readonly diagnostics: LangDiagnostic[] = [];
@@ -14,5 +14,63 @@ export class EmitContext {
 
   warning(message: string, span?: Span): void {
     this.diagnostics.push(langWarning(message, span));
+  }
+}
+
+/**
+ * Block-scoped context for emitting function/event bodies.
+ * Extends {@link EmitContext} with temporary variable allocation
+ * and accumulator-reservation tracking.
+ *
+ * Temp variables are named `__t0`, `__t1`, etc. The counter resets
+ * after each top-level statement (via {@link resetTemps}), but the
+ * high-water mark is preserved so the final `vars` list includes
+ * every slot that was ever needed.
+ */
+export class BlockEmitContext extends EmitContext {
+  /** Current temp index, reset per statement. */
+  private tempCounter = 0;
+
+  /** Maximum temp index ever reached across all statements. */
+  private tempHighWater = 0;
+
+  /**
+   * `true` when the accumulator (`$_`) is already carrying a value
+   * that must not be overwritten (e.g. inside a pipe chain).
+   * TODO: A future lookahead would be to scan our code for any accumulator references outside of a pipe chain, OR
+   * ensure the syntax disallows that to prevent shadowing a "free" accumulator that's referenced later. I think
+   * arbitrary accumulator use will lead to code smell, and it should only ever appear in a pipe in the MTP context.
+   */
+  accumulatorReserved = false;
+
+  /**
+   * Allocate a temp variable reference (`$__t0`, `$__t1`, ...).
+   * Returns the variable reference string (with `$` prefix).
+   */
+  allocTemp(): string {
+    const idx = this.tempCounter++;
+    if (this.tempCounter > this.tempHighWater) {
+      this.tempHighWater = this.tempCounter;
+    }
+    return `$__t${idx}`;
+  }
+
+  /** Reset the temp counter for the next statement. */
+  resetTemps(): void {
+    this.tempCounter = 0;
+  }
+
+  /**
+   * Return the list of temp variable names (without `$` prefix)
+   * needed in the enclosing function's `vars` declaration.
+   */
+  getTempVars(): string[] {
+    const vars: string[] = [];
+    
+    for (let i = 0; i < this.tempHighWater; i++) {
+      vars.push(`__t${i}`);
+    }
+
+    return vars;
   }
 }

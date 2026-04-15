@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { emitStatements } from "./statements.js";
-import { EmitContext } from "./context.js";
+import { BlockEmitContext } from "./context.js";
 
 describe("emitStatements", () => {
   it("returns empty actions (not yet implemented)", () => {
-    const ctx = new EmitContext();
+    const ctx = new BlockEmitContext();
     const result = emitStatements([], ctx);
     expect(result).toEqual([]);
   });

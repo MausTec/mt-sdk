@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { exprToCondition } from "./conditions.js";
-import { EmitContext } from "./context.js";
+import { BlockEmitContext } from "./context.js";
 import type { Span } from "../diagnostics.js";
 
 const SPAN: Span = { line: 1, col: 1, endLine: 1, endCol: 1 };
 
 describe("exprToCondition", () => {
   it("returns null (not yet implemented)", () => {
-    const ctx = new EmitContext();
+    const ctx = new BlockEmitContext();
     const expr = {
       kind: "Binary" as const,
       op: "==" as const,

@@ -1,6 +1,6 @@
 import type { Expr } from "../ast.js";
 import type { MtpCondition } from "../../core/mtp-types.js";
-import type { EmitContext } from "./context.js";
+import type { BlockEmitContext } from "./context.js";
 
 /**
  * Compile an expression into an MtpCondition predicate for use in
@@ -16,7 +16,7 @@ import type { EmitContext } from "./context.js";
  */
 export function exprToCondition(
   _expr: Expr,
-  _ctx: EmitContext,
+  _ctx: BlockEmitContext,
 ): MtpCondition | null {
   // TODO: Implement in a future phase.
   return null;

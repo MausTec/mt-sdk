@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { exprToValue, exprToActions, isSimpleExpr } from "./expressions.js";
-import { EmitContext } from "./context.js";
+import { BlockEmitContext } from "./context.js";
 import type { Span } from "../diagnostics.js";
 import type { Expr } from "../ast.js";
 
@@ -34,7 +34,7 @@ describe("isSimpleExpr", () => {
 // --- exprToValue (leaf expressions) -------------------------------------------
 
 describe("exprToValue", () => {
-  const ctx = new EmitContext();
+  const ctx = new BlockEmitContext();
 
   it("Literal number → raw value", () => {
     expect(exprToValue({ kind: "Literal", varType: "int", value: 42, span: SPAN }, ctx)).toBe(42);
@@ -85,7 +85,7 @@ describe("exprToValue", () => {
 
 describe("exprToActions", () => {
   it("returns empty actions (not yet implemented)", () => {
-    const ctx = new EmitContext();
+    const ctx = new BlockEmitContext();
     const expr = { kind: "Literal" as const, varType: "int" as const, value: 42, span: SPAN };
     expect(exprToActions(expr, ctx)).toEqual([]);
   });

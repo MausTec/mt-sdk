@@ -7,7 +7,7 @@ import type {
   IdentifierExpr,
 } from "../ast.js";
 import type { MtpAction, MtpValue } from "../../core/mtp-types.js";
-import type { EmitContext } from "./context.js";
+import type { BlockEmitContext } from "./context.js";
 
 // --- Simple expressions -------------------------------------------------------
 
@@ -47,7 +47,7 @@ export function isSimpleExpr(expr: Expr): expr is SimpleExpr {
  */
 export function exprToValue(
   expr: Expr,
-  _ctx: EmitContext,
+  _ctx: BlockEmitContext,
 ): MtpValue | null {
   if (!isSimpleExpr(expr)) return null;
 
@@ -84,7 +84,7 @@ export function exprToValue(
  */
 export function exprToActions(
   _expr: Expr,
-  _ctx: EmitContext,
+  _ctx: BlockEmitContext,
   _target?: string,
 ): MtpAction[] {
   // TODO: Implement in a future phase.

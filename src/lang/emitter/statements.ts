@@ -1,6 +1,6 @@
 import type { Stmt } from "../ast.js";
 import type { MtpAction } from "../../core/mtp-types.js";
-import type { EmitContext } from "./context.js";
+import type { BlockEmitContext } from "./context.js";
 
 /**
  * Compile a statement list into mt-actions action objects.
@@ -18,7 +18,7 @@ import type { EmitContext } from "./context.js";
  */
 export function emitStatements(
   _stmts: Stmt[],
-  _ctx: EmitContext,
+  _ctx: BlockEmitContext,
 ): MtpAction[] {
   // TODO: Implement statement compilation in a future phase.
   // For now, statement compilation is not yet wired in; the plugin emitter
