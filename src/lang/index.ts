@@ -75,3 +75,59 @@ export function transpile(source: string): TranspileResult {
   const { plugin, diagnostics: emitDiags } = emitPlugin(ast);
   return { plugin, diagnostics: [...parseDiags, ...validateDiags, ...emitDiags] };
 }
+
+/**
+ * Format the transpiled JSON structure into a human-readable string suitable for writing
+ * to a `.json` file.
+ *
+ * Produces output matching the hand-written plugin.json conventions:
+ * - 4-space indent
+ * - Short primitive arrays inlined: `[ "@eom" ]`
+ * - Short objects inlined: `{ "return": 42 }`
+ * - Action lists (arrays of objects) expanded, one per line
+ * - Spaces inside braces/brackets for inline containers
+ */
+export function formatPluginJson(plugin: MtpPlugin): string {
+  return prettyPrint(plugin as unknown, 0);
+}
+
+const INLINE_MAX = 72;
+const INDENT = "    ";
+
+function compactValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value !== "object") return JSON.stringify(value);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[ ]";
+    return "[ " + value.map(compactValue).join(", ") + " ]";
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return "{ }";
+
+  return "{ " + entries.map(([k, v]) => JSON.stringify(k) + ": " + compactValue(v)).join(", ") + " }";
+}
+
+function prettyPrint(value: unknown, depth: number): string {
+  if (value === null) return "null";
+  if (typeof value !== "object") return JSON.stringify(value);
+
+  const compact = compactValue(value);
+  if (compact.length <= INLINE_MAX) return compact;
+
+  const pad = INDENT.repeat(depth + 1);
+  const closePad = INDENT.repeat(depth);
+
+  if (Array.isArray(value)) {
+    const items = value.map((v) => pad + prettyPrint(v, depth + 1));
+    return "[\n" + items.join(",\n") + "\n" + closePad + "]";
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  const lines = entries.map(([key, val]) => {
+    return pad + JSON.stringify(key) + ": " + prettyPrint(val, depth + 1);
+  });
+  
+  return "{\n" + lines.join(",\n") + "\n" + closePad + "}";
+}

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSy
 import { join, resolve, extname, dirname, basename } from "node:path";
 import { parseArgs } from "node:util";
 import { info, warn, error, success, dim } from "../output.js";
-import { transpile } from "../../lang/index.js";
+import { formatPluginJson, transpile } from "../../lang/index.js";
 import type { LangDiagnostic } from "../../lang/index.js";
 
 type ProjectType = "app" | "json-plugin" | "mtp-plugin" | "monorepo" | "unknown";
@@ -76,6 +76,7 @@ function buildMtpFile(filePath: string, outputDest: string): void {
 
   const source = readFileSync(filePath, "utf8");
   const { plugin, diagnostics } = transpile(source);
+  const json = formatPluginJson(plugin);
 
   // Emit diagnostics
   for (const diag of diagnostics) {
@@ -91,8 +92,6 @@ function buildMtpFile(filePath: string, outputDest: string): void {
 
   const warnings = diagnostics.filter((d: LangDiagnostic) => d.level === "warning");
   const errors = diagnostics.filter((d: LangDiagnostic) => d.level === "error");
-
-  const json = JSON.stringify(plugin, null, 2);
 
   if (errors.length > 0) {
     error(`Transpilation failed with ${errors.length} error(s)${warnings.length > 0 ? ` and ${warnings.length} warning(s)` : ""}`);
