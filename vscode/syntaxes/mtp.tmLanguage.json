@@ -86,7 +86,7 @@
 
         "control-keywords": {
             "comment": "Control flow and explicit global mutation",
-            "match": "\\b(if|else|unless|return|set)\\b",
+            "match": "\\b(if|else|unless|return|set|const|while|until|for|in)\\b",
             "captures": {
                 "1": { "name": "keyword.control.mtp" }
             }
@@ -195,7 +195,7 @@
                 },
                 {
                     "comment": "name \"arg\" or name @ref or name $var - paren-free single-arg call at statement level",
-                    "match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s+[\"@$])",
+                    "match": "^\\s*(?!(?:if|else|unless|return|set|const|while|until|for|in|do|end|config|globals|match|vars|def|fn|on|defplugin|defmodule|import|alias|int|bool|string)\\b)([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s+[\"@$])",
                     "captures": {
                         "1": { "name": "entity.name.function.call.mtp" }
                     }
