@@ -976,3 +976,84 @@ end`;
     expect(errs.some((e) => e.includes("Multiple handlers"))).toBe(true);
   });
 });
+
+// ===========================================================================
+// Phase 4 — Match block parsing & emission
+// ===========================================================================
+
+describe("Phase 4: match block parsing", () => {
+  it("parses a match block with known predicates", () => {
+    const src = `
+defplugin "Test" do
+  match do
+    ble_name_prefix "LVS-Max"
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toHaveLength(0);
+  });
+
+  it("parses multiple match predicates", () => {
+    const src = `
+defplugin "Test" do
+  match do
+    ble_name_prefix "LVS"
+    vid "1234"
+    pid "5678"
+  end
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toHaveLength(0);
+  });
+
+  it("emits match block to JSON output", () => {
+    const src = `
+defplugin "Test" do
+  match do
+    ble_name_prefix "LVS-Max"
+    vid "1234"
+  end
+end`;
+    const plugin = transpileOk(src);
+    const match = (plugin as unknown as Record<string, unknown>).match as Record<string, unknown>;
+    expect(match).toBeDefined();
+    expect(match.bleNamePrefix).toBe("LVS-Max");
+    expect(match.vid).toBe("1234");
+  });
+
+  it("errors on unknown match predicate", () => {
+    const src = `
+defplugin "Test" do
+  match do
+    ble_name_prefix "LVS"
+    unknownMatch "who"
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("Unknown") && e.includes("unknownMatch"))).toBe(true);
+  });
+
+  it("supports ble_name predicate", () => {
+    const src = `
+defplugin "Test" do
+  match do
+    ble_name "LVS-Max001"
+  end
+end`;
+    const plugin = transpileOk(src);
+    const match = (plugin as unknown as Record<string, unknown>).match as Record<string, unknown>;
+    expect(match.bleName).toBe("LVS-Max001");
+  });
+
+  it("supports serial predicate", () => {
+    const src = `
+defplugin "Test" do
+  match do
+    serial "ABC123"
+  end
+end`;
+    const plugin = transpileOk(src);
+    const match = (plugin as unknown as Record<string, unknown>).match as Record<string, unknown>;
+    expect(match.serial).toBe("ABC123");
+  });
+});

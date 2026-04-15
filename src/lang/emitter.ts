@@ -1,4 +1,4 @@
-import type { PluginNode, MetadataFieldNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl as _GlobalDecl, DefNode, Expr, OnNode, FnNode, Stmt } from "./ast.js";
+import type { PluginNode, MetadataFieldNode, MatchBlockNode, ConfigBlockNode, ConfigDecl, GlobalsBlockNode, GlobalDecl as _GlobalDecl, DefNode, Expr, OnNode, FnNode, Stmt } from "./ast.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { langError, langWarning } from "./diagnostics.js";
 import type { MtpPlugin } from "../core/mtp-types.js";
@@ -81,6 +81,10 @@ class Emitter {
       this.emitField(plugin, field, METADATA_FIELDS, "defplugin");
     }
 
+    if (ast.matchBlock !== null) {
+      plugin["match"] = this.emitMatchBlock(ast.matchBlock);
+    }
+
     if (ast.configBlock !== null) {
       plugin["config"] = this.emitConfigBlock(ast.configBlock);
     }
@@ -149,6 +153,27 @@ class Emitter {
     }
 
     return variables;
+  }
+
+  private emitMatchBlock(block: MatchBlockNode): Record<string, unknown> {
+    const match: Record<string, unknown> = {};
+
+    for (const pred of block.predicates) {
+      const fieldDef = MATCH_FIELDS[pred.key];
+
+      if (!fieldDef) {
+        this.diagnostics.push(
+          langError(`Unknown match predicate \`${pred.key}\``, pred.span)
+        );
+
+        continue;
+      }
+      
+      const jsonKey = fieldDef.jsonKey ?? pred.key;
+      match[jsonKey] = exprToJson(pred.value);
+    }
+
+    return match;
   }
 
   /**

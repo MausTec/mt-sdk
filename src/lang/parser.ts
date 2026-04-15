@@ -4,6 +4,8 @@ import { TokenKind } from "./token.js";
 import type { 
   PluginNode, 
   MetadataFieldNode, 
+  MatchBlockNode,
+  MatchPredicate,
   Expr, 
   LiteralExpr, 
   IdentifierExpr, 
@@ -72,7 +74,6 @@ function emptyPlugin(span: Span): PluginNode {
  * Remove a kind from this set when a dedicated parse method is added for it.
  */
 const SKIP_BLOCK_STARTERS = new Set<TokenKind>([
-  TokenKind.Match,
 ]);
 
 const TYPE_KEYWORDS = new Map<TokenKind, VarType>([
@@ -304,9 +305,9 @@ class Parser {
         continue;
       }
 
-      // Other sub-blocks with do...end are skipped for now
-      if (SKIP_BLOCK_STARTERS.has(this.peek().kind)) {
-        this.skipDoBlock();
+      // match block
+      if (this.check(TokenKind.Match)) {
+        result.matchBlock = this.parseMatchBlock();
         continue;
       }
 
@@ -575,6 +576,50 @@ class Parser {
       nameSpan: nameToken.span,
       arraySize,
       init: initExpr,
+    };
+  }
+
+  // --- Match block -----------------------------------------------------------
+
+  private parseMatchBlock(): MatchBlockNode {
+    const kwToken = this.advance(); // consume `match`
+    this.expectDoAndNewline("after `match`");
+
+    const predicates: MatchPredicate[] = [];
+
+    while (!this.check(TokenKind.End) && !this.check(TokenKind.EOF)) {
+      this.consumeTrivia();
+      if (this.check(TokenKind.End) || this.check(TokenKind.EOF)) break;
+
+      if (!this.check(TokenKind.Identifier)) {
+        const t = this.advance();
+        this.diagnostics.push(langError(`Unexpected token \`${t.kind}\` in match block`, t.span));
+        continue;
+      }
+
+      const keyToken = this.advance();
+      const valueExpr = this.parseScalarValue();
+
+      if (!valueExpr) {
+        this.diagnostics.push(langError(`Expected value after match key \`${keyToken.value}\``, this.peek().span));
+        this.skipToNextLine();
+        continue;
+      }
+
+      predicates.push({
+        kind: "MatchPredicate",
+        key: keyToken.value,
+        value: valueExpr,
+        span: mergeSpan(keyToken.span, valueExpr.span),
+      });
+    }
+
+    const endToken = this.eat(TokenKind.End);
+
+    return {
+      kind: "MatchBlock",
+      span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
+      predicates,
     };
   }
 
