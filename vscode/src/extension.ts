@@ -1,5 +1,5 @@
 import * as path from "path";
-import type { ExtensionContext } from "vscode";
+import * as vscode from "vscode";
 import {
   LanguageClient,
   TransportKind,
@@ -8,10 +8,9 @@ import type { LanguageClientOptions, ServerOptions } from "vscode-languageclient
 
 let client: LanguageClient | undefined;
 
-export function activate(context: ExtensionContext): void {
-  // Resolve the bundled LSP server entry point relative to the extension root.
-  // esbuild bundles it to dist/lsp-server.js so this path works both in
-  // development (loaded from vscode/) and when installed from a .vsix.
+export function activate(context: vscode.ExtensionContext): void {
+  // --- LSP Client ---
+
   const serverModule = context.asAbsolutePath(
     path.join("dist", "lsp-server.js"),
   );
@@ -32,7 +31,6 @@ export function activate(context: ExtensionContext): void {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: "mtp" }],
     synchronize: {
-      // Re-send diagnostics when files matching this glob change on disk.
       fileEvents: [],
     },
   };
@@ -45,6 +43,24 @@ export function activate(context: ExtensionContext): void {
   );
 
   client.start();
+
+  // --- MCP Server ---
+
+  const mcpServerPath = context.asAbsolutePath(
+    path.join("dist", "mcp-server.js"),
+  );
+
+  context.subscriptions.push(
+    vscode.lm.registerMcpServerDefinitionProvider("mt-sdk-mcp", {
+      provideMcpServerDefinitions: async () => [
+        new vscode.McpStdioServerDefinition(
+          "Maus-Tec Plugin SDK",
+          process.execPath,
+          [mcpServerPath],
+        ),
+      ],
+    }),
+  );
 }
 
 export function deactivate(): Thenable<void> | undefined {

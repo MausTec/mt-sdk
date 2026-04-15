@@ -6,15 +6,12 @@
     "publisher": "maus-tec",
     "license": "MIT",
     "engines": {
-        "vscode": "^1.75.0"
+        "vscode": "^1.101.0"
     },
     "categories": [
         "Programming Languages"
     ],
     "main": "./dist/extension.js",
-    "activationEvents": [
-        "onLanguage:mtp"
-    ],
     "repository": {
         "type": "git",
         "url": "https://github.com/MausTec/mt-sdk"
@@ -22,7 +19,8 @@
     "scripts": {
         "bundle:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
         "bundle:server": "esbuild ../src/bin/mt-sdk-lsp.ts --bundle --outfile=dist/lsp-server.js --format=cjs --platform=node --sourcemap",
-        "build": "npm run bundle:extension && npm run bundle:server",
+        "bundle:mcp": "esbuild ../src/bin/mt-sdk-mcp.ts --bundle --outfile=dist/mcp-server.js --format=cjs --platform=node --sourcemap",
+        "build": "npm run bundle:extension && npm run bundle:server && npm run bundle:mcp",
         "watch": "npm run bundle:extension -- --watch & npm run bundle:server -- --watch",
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "package": "npm run build && vsce package --out build/maus-tec-plugin-syntax-$(node -p \"require('./package.json').version\").vsix",
@@ -32,7 +30,7 @@
         "vscode-languageclient": "^9.0.1"
     },
     "devDependencies": {
-        "@types/vscode": "^1.75.0",
+        "@types/vscode": "^1.101.0",
         "@vscode/vsce": "^3.7.1",
         "esbuild": "^0.25.0",
         "typescript": "^5.0.0"
@@ -60,6 +58,12 @@
                 "language": "mtp",
                 "scopeName": "source.mtp",
                 "path": "./syntaxes/mtp.tmLanguage.json"
+            }
+        ],
+        "mcpServerDefinitionProviders": [
+            {
+                "id": "mt-sdk-mcp",
+                "label": "Maus-Tec Plugin SDK"
             }
         ]
     }
