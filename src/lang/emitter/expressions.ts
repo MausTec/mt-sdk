@@ -5,8 +5,9 @@ import type {
   AccumulatorExpr,
   ErrorCodeExpr,
   IdentifierExpr,
+  BinaryOp,
 } from "../ast.js";
-import type { MtpAction, MtpValue } from "../../core/mtp-types.js";
+import type { MtpAction, MtpActionObject, MtpValue } from "../../core/mtp-types.js";
 import type { BlockEmitContext } from "./context.js";
 
 // --- Simple expressions -------------------------------------------------------
@@ -65,28 +66,129 @@ export function exprToValue(
   }
 }
 
+// --- Argument resolution ------------------------------------------------------
+
+/**
+ * Map from MTP binary operator to the mt-actions action key.
+ * Comparison operators (==, !=, etc.) and logical operators (and, or)
+ * are handled by the condition emitter, not here.
+ */
+const BINARY_OP_ACTION: Partial<Record<BinaryOp, string>> = {
+  "+": "add",
+  "-": "sub",
+  "*": "mul",
+  "/": "div",
+  "<>": "concat",
+};
+
+/**
+ * Resolve an expression to a bare {@link MtpValue}, emitting prerequisite
+ * actions into `prereqs` if the expression is complex.
+ *
+ * When `canUseAccumulator` is true AND the expression is complex, the
+ * result flows through `$_` (no temp allocation). Otherwise a temp is
+ * allocated via `ctx.allocTemp()`.
+ */
+export function resolveArg(
+  expr: Expr,
+  ctx: BlockEmitContext,
+  prereqs: MtpAction[],
+  canUseAccumulator: boolean,
+): MtpValue {
+  const simple = exprToValue(expr, ctx);
+  if (simple !== null) return simple;
+
+  const target = canUseAccumulator ? undefined : ctx.allocTemp();
+  prereqs.push(...exprToActions(expr, ctx, target));
+  return target ?? "$_";
+}
+
+// --- exprToActions ------------------------------------------------------------
+
+/** Attach a `to` key only when a target is specified. */
+function withTarget(action: MtpActionObject, target?: string): MtpActionObject {
+  if (target !== undefined) action.to = target;
+  return action;
+}
+
+/** Build an MtpActionObject from a single dynamic key + value. */
+function actionObj(key: string, value: unknown): MtpActionObject {
+  const obj = Object.create(null) as MtpActionObject;
+  obj[key] = value;
+  return obj;
+}
+
 /**
  * Compile an expression into one or more mt-actions action objects.
- * Used when an expression appears as a standalone statement or as the RHS
- * of an assignment where the value is too complex for exprToValue().
  *
- * The optional `target` parameter specifies a "to" variable for the result.
- * When omitted, the result flows to $_ (the accumulator).
- *
- * TODO: Handle expression kinds:
- * - Binary(+ - * /) -> {add/sub/mul/div: [l, r], to?: target}
- * - Binary(<>)      -> {concat: [l, r], to?: target}
- * - Call            -> {funcName: [args]} or bare "funcName" string
- * - Pipe            -> sequence of actions with $_ carry-through
- * - Index           -> {getbyte: [target, index], to?: target}
- * - Unary(-)        -> {sub: [0, operand], to?: target}
- * - Nested exprs    -> flatten via $_ accumulator
+ * The optional `target` parameter specifies a `to` variable for the result.
+ * When omitted, the result flows to `$_` (the accumulator).
  */
 export function exprToActions(
-  _expr: Expr,
-  _ctx: BlockEmitContext,
-  _target?: string,
+  expr: Expr,
+  ctx: BlockEmitContext,
+  target?: string,
 ): MtpAction[] {
-  // TODO: Implement in a future phase.
-  return [];
+  if (isSimpleExpr(expr)) return [];
+
+  switch (expr.kind) {
+    case "ConfigRef":
+      return [withTarget(actionObj("getPluginConfig", expr.name), target)];
+
+    case "Unary": {
+      if (expr.op === "-") {
+        const prereqs: MtpAction[] = [];
+        const operand = resolveArg(expr.operand, ctx, prereqs, !ctx.accumulatorReserved);
+        return [...prereqs, withTarget(actionObj("sub", [0, operand]), target)];
+      }
+      // "not" is a condition, not a value expression
+      ctx.error(`Cannot emit unary "${expr.op}" as a value expression`, expr.span);
+      return [];
+    }
+
+    case "Binary": {
+      const actionKey = BINARY_OP_ACTION[expr.op];
+      if (actionKey === undefined) {
+        // Comparison / logical ops are conditions, not value expressions
+        ctx.error(`Cannot emit binary "${expr.op}" as a value expression`, expr.span);
+        return [];
+      }
+
+      const leftSimple = isSimpleExpr(expr.left);
+      const rightSimple = isSimpleExpr(expr.right);
+      const prereqs: MtpAction[] = [];
+
+      let leftVal: MtpValue;
+      let rightVal: MtpValue;
+
+      if (leftSimple && rightSimple) {
+        // Both simple — no prereqs
+        leftVal = exprToValue(expr.left, ctx)!;
+        rightVal = exprToValue(expr.right, ctx)!;
+      } else if (leftSimple) {
+        // Only right is complex — right gets accumulator (if free)
+        leftVal = exprToValue(expr.left, ctx)!;
+        rightVal = resolveArg(expr.right, ctx, prereqs, !ctx.accumulatorReserved);
+      } else if (rightSimple) {
+        // Only left is complex — left gets accumulator (if free)
+        rightVal = exprToValue(expr.right, ctx)!;
+        leftVal = resolveArg(expr.left, ctx, prereqs, !ctx.accumulatorReserved);
+      } else {
+        // Both complex — first gets temp (or accumulator if free), second gets the other
+        const accFree = !ctx.accumulatorReserved;
+        leftVal = resolveArg(expr.left, ctx, prereqs, false);
+        rightVal = resolveArg(expr.right, ctx, prereqs, accFree);
+      }
+
+      const action = actionObj(actionKey, [leftVal, rightVal]);
+
+      return [...prereqs, withTarget(action, target)];
+    }
+
+    case "Call":
+    case "Pipe":
+    case "Index":
+      // TODO: Implement in a future phase.
+      return [];
+  }
 }
