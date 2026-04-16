@@ -1,5 +1,12 @@
 import type { LangDiagnostic, Span } from "../diagnostics.js";
 import { langError, langWarning } from "../diagnostics.js";
+import type { VarType } from "../ast.js";
+
+/** Lightweight variable info for the emitter (no full symbol table needed). */
+export interface EmitVarInfo {
+  varType: VarType;
+  arraySize: number | null;
+}
 
 /**
  * Shared context threaded through all sub-emitters.
@@ -35,6 +42,13 @@ export class BlockEmitContext extends EmitContext {
    */
   readonly localFunctions: ReadonlyMap<string, string[]>;
 
+  /**
+   * Variable type info for locals, globals, and parameters.
+   * Keyed by bare name (no `$` prefix). Used by the for-loop emitter
+   * to determine whether an iterable is an array or string.
+   */
+  readonly variables: ReadonlyMap<string, EmitVarInfo>;
+
   /** Current temp index, reset per statement. */
   private tempCounter = 0;
 
@@ -50,9 +64,13 @@ export class BlockEmitContext extends EmitContext {
    */
   accumulatorReserved = false;
 
-  constructor(localFunctions?: Map<string, string[]>) {
+  constructor(
+    localFunctions?: Map<string, string[]>,
+    variables?: Map<string, EmitVarInfo>,
+  ) {
     super();
     this.localFunctions = localFunctions ?? new Map();
+    this.variables = variables ?? new Map();
   }
 
   /**

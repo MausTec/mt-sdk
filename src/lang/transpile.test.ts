@@ -1466,3 +1466,126 @@ end`;
     ]);
   });
 });
+
+
+// --- For-in loop ------------------------------------------------------------
+
+describe("for-in loop", () => {
+  it("compiles a forward range loop", () => {
+    const src = `
+defplugin "Test" do
+  def fill() do
+    int i = 0
+    for i in 1..5 do
+      tick()
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.fill;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 0 } },
+      { set: { "$i": 1 } },
+      { while: { lte: ["$i", 5], then: [{ tick: [] }, { inc: "$i" }] } },
+    ]);
+  });
+
+  it("compiles a reverse range loop", () => {
+    const src = `
+defplugin "Test" do
+  def countdown() do
+    int i = 0
+    for i in 10..1 do
+      tick()
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.countdown;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 0 } },
+      { set: { "$i": 10 } },
+      { while: { gte: ["$i", 1], then: [{ tick: [] }, { dec: "$i" }] } },
+    ]);
+  });
+
+  it("compiles a byte array iteration", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int tape[30]
+  end
+  def scan() do
+    int val = 0
+    for val in tape do
+      tick()
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.scan;
+    expect(fn.actions).toEqual([
+      { set: { "$val": 0 } },
+      { set: { "$__t0": 0 } },
+      { while: { lt: ["$__t0", 30], then: [
+        { getbyte: ["$tape", "$__t0"], to: "$val" },
+        { tick: [] },
+        { inc: "$__t0" },
+      ] } },
+    ]);
+  });
+
+  it("compiles a string iteration", () => {
+    const src = `
+defplugin "Test" do
+  def scan() do
+    string msg = "hello"
+    int ch = 0
+    for ch in msg do
+      tick()
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.scan;
+    expect(fn.actions).toEqual([
+      { set: { "$msg": "hello" } },
+      { set: { "$ch": 0 } },
+      { strlen: "$msg", to: "$__t0" },
+      { set: { "$__t1": 0 } },
+      { while: { lt: ["$__t1", "$__t0"], then: [
+        { charat: ["$msg", "$__t1"], to: "$ch" },
+        { tick: [] },
+        { inc: "$__t1" },
+      ] } },
+    ]);
+  });
+
+  it("errors on undeclared loop variable", () => {
+    const src = `
+defplugin "Test" do
+  def test() do
+    for i in 1..10 do
+      tick()
+    end
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.length).toBeGreaterThan(0);
+  });
+
+  it("errors on iterating a plain int variable", () => {
+    const src = `
+defplugin "Test" do
+  def test() do
+    int x = 5
+    int val = 0
+    for val in x do
+      tick()
+    end
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some(e => e.includes("Cannot iterate"))).toBe(true);
+  });
+});

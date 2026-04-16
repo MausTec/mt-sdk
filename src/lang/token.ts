@@ -27,6 +27,8 @@ export enum TokenKind {
   Unless = "unless",
   While = "while",
   Until = "until",
+  For = "for",
+  In = "in",
   Return = "return",
 
   // --- Modifier keywords -----------------------------------------------------
@@ -69,6 +71,7 @@ export enum TokenKind {
   BinaryAnd = "&",
   BinaryXor = "^",
   BinaryNot = "~",
+  DotDot = "..",
 
   // --- Punctuation -----------------------------------------------------------
   LParen = "(",

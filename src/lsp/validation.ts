@@ -218,6 +218,44 @@ function validateStmt(
       for (const s of stmt.body) validateStmt(diags, symbols, ctx, s);
       break;
 
+    case "For": {
+      // Loop variable must be pre-declared
+      // TODO: I really think this validator should be part of the transpiler core and not LSP specific, so that the CLI can emit errors
+      // for undeclared loop variables rather than relying on the LSP to catch them.
+      // I actually think I wired this to the CLI, but imported from the LSP instead of Lang/ 
+      if (stmt.global) {
+        const resolved = symbols.resolveGlobal(stmt.variable);
+        if (resolved === undefined) {
+          diags.push({
+            level: "error",
+            message: `Unknown variable \`${stmt.variable}\``,
+            span: stmt.variableSpan,
+          });
+        }
+      } else {
+        const resolved = symbols.resolveLocal(
+          stmt.variable,
+          ctx.stmts,
+          stmt.span.line,
+          ctx.params,
+        );
+        if (resolved === undefined) {
+          diags.push({
+            level: "error",
+            message: `Unknown variable \`${stmt.variable}\``,
+            span: stmt.variableSpan,
+          });
+        }
+      }
+
+      if (stmt.iterable.kind === "Range") {
+        validateExpr(diags, symbols, ctx, stmt.iterable.start);
+        validateExpr(diags, symbols, ctx, stmt.iterable.end);
+      }
+      for (const s of stmt.body) validateStmt(diags, symbols, ctx, s);
+      break;
+    }
+
     case "CompoundAssign":
       validateExpr(diags, symbols, ctx, stmt.value);
       break;

@@ -124,6 +124,7 @@ export type Stmt =
   | ExprStmt
   | IfStmt
   | WhileStmt
+  | ForStmt
   | ReturnStmt
   | ConditionalStmt;
 
@@ -184,6 +185,22 @@ export interface WhileStmt extends BaseNode {
   kind: "While";
   guard: "while" | "until";
   condition: Expr;
+  body: Stmt[];
+}
+
+/** The iterable part of a `for...in` loop. */
+export type ForIterable =
+  | { kind: "Range"; start: Expr; end: Expr }
+  | { kind: "Variable"; name: string; global: boolean; span: Span };
+
+/** `for var in iterable do...end` loop. */
+export interface ForStmt extends BaseNode {
+  kind: "For";
+  variable: string;
+  variableSpan: Span;
+  /** Whether the loop variable is a global ($name). */
+  global: boolean;
+  iterable: ForIterable;
   body: Stmt[];
 }
 

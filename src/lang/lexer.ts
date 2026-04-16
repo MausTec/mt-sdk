@@ -28,6 +28,8 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["unless",    TokenKind.Unless],
   ["while",     TokenKind.While],
   ["until",     TokenKind.Until],
+  ["for",       TokenKind.For],
+  ["in",        TokenKind.In],
   ["return",    TokenKind.Return],
   ["and",       TokenKind.And],
   ["or",        TokenKind.Or],
@@ -426,6 +428,17 @@ class Lexer {
       case "&": kind = TokenKind.BinaryAnd; break;
       case "^": kind = TokenKind.BinaryXor; break;
       case "~": kind = TokenKind.BinaryNot; break;
+
+      // --- Range operator -------------------------------------------------------
+      case ".": {
+        if (this.peek(1) === ".") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.DotDot, "..", start);
+          return true;
+        }
+        return false;
+      }
     }
 
     if (kind === null) return false;

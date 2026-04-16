@@ -222,6 +222,16 @@ function visitStmt(node: Stmt, line: number, col: number, path: ASTPath): boolea
       }
       break;
 
+    case "For":
+      if (node.iterable.kind === "Range") {
+        if (visitExpr(node.iterable.start, line, col, path)) break;
+        if (visitExpr(node.iterable.end, line, col, path)) break;
+      }
+      for (const s of node.body) {
+        if (visitStmt(s, line, col, path)) return true;
+      }
+      break;
+
     case "CompoundAssign":
       visitExpr(node.value, line, col, path);
       break;

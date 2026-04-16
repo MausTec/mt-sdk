@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { emitStatements } from "./statements.js";
 import { BlockEmitContext } from "./context.js";
-import type { Stmt, Expr } from "../ast.js";
+import type { Stmt, Expr, IdentifierExpr } from "../ast.js";
 import type { Span } from "../diagnostics.js";
 
 const SPAN: Span = { line: 1, col: 1, endLine: 1, endCol: 1 };
@@ -585,6 +585,116 @@ describe("emitStatements", () => {
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
         { while: { neq: ["$x", 0], then: [{ tick: [] }] } },
+      ]);
+    });
+  });
+
+  // --- For-in loop ---
+
+  describe("ForStmt", () => {
+    it("emits forward range with literal bounds", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "For",
+        variable: "i",
+        variableSpan: SPAN,
+        global: false,
+        iterable: { kind: "Range", start: lit(1), end: lit(5) },
+        body: [{ kind: "ExprStmt", expr: { kind: "Call", name: "tick", args: [], span: SPAN }, span: SPAN }],
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { set: { "$i": 1 } },
+        { while: { lte: ["$i", 5], then: [{ tick: [] }, { inc: "$i" }] } },
+      ]);
+    });
+
+    it("emits reverse range with literal bounds", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "For",
+        variable: "i",
+        variableSpan: SPAN,
+        global: false,
+        iterable: { kind: "Range", start: lit(10), end: lit(1) },
+        body: [{ kind: "ExprStmt", expr: { kind: "Call", name: "tick", args: [], span: SPAN }, span: SPAN }],
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { set: { "$i": 10 } },
+        { while: { gte: ["$i", 1], then: [{ tick: [] }, { dec: "$i" }] } },
+      ]);
+    });
+
+    it("emits dynamic range with variable bounds", () => {
+      const ctx = new BlockEmitContext();
+      const startExpr: IdentifierExpr = { kind: "Identifier", name: "lo", span: SPAN };
+      const endExpr: IdentifierExpr = { kind: "Identifier", name: "hi", span: SPAN };
+
+      const stmts: Stmt[] = [{
+        kind: "For",
+        variable: "i",
+        variableSpan: SPAN,
+        global: false,
+        iterable: { kind: "Range", start: startExpr, end: endExpr },
+        body: [{ kind: "ExprStmt", expr: { kind: "Call", name: "tick", args: [], span: SPAN }, span: SPAN }],
+        span: SPAN,
+      }];
+
+      const result = emitStatements(stmts, ctx);
+
+      expect(result).toEqual([
+        { set: { "$i": "$lo" } },
+        { if: { lte: ["$lo", "$hi"], then: [
+          { while: { lte: ["$i", "$hi"], then: [{ tick: [] }, { inc: "$i" }] } },
+        ], else: [
+          { while: { gte: ["$i", "$hi"], then: [{ tick: [] }, { dec: "$i" }] } },
+        ] } },
+      ]);
+    });
+
+    it("emits byte array iteration via getbyte", () => {
+      const vars = new Map([["tape", { varType: "int" as const, arraySize: 30 }]]);
+      const ctx = new BlockEmitContext(undefined, vars);
+      const stmts: Stmt[] = [{
+        kind: "For",
+        variable: "val",
+        variableSpan: SPAN,
+        global: false,
+        iterable: { kind: "Variable", name: "tape", global: false, span: SPAN },
+        body: [{ kind: "ExprStmt", expr: { kind: "Call", name: "tick", args: [], span: SPAN }, span: SPAN }],
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { set: { "$__t0": 0 } },
+        { while: { lt: ["$__t0", 30], then: [
+          { getbyte: ["$tape", "$__t0"], to: "$val" },
+          { tick: [] },
+          { inc: "$__t0" },
+        ] } },
+      ]);
+    });
+
+    it("emits string iteration via charat/strlen", () => {
+      const vars = new Map([["greeting", { varType: "string" as const, arraySize: null }]]);
+      const ctx = new BlockEmitContext(undefined, vars);
+      const stmts: Stmt[] = [{
+        kind: "For",
+        variable: "ch",
+        variableSpan: SPAN,
+        global: false,
+        iterable: { kind: "Variable", name: "greeting", global: false, span: SPAN },
+        body: [{ kind: "ExprStmt", expr: { kind: "Call", name: "tick", args: [], span: SPAN }, span: SPAN }],
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { strlen: "$greeting", to: "$__t0" },
+        { set: { "$__t1": 0 } },
+        { while: { lt: ["$__t1", "$__t0"], then: [
+          { charat: ["$greeting", "$__t1"], to: "$ch" },
+          { tick: [] },
+          { inc: "$__t1" },
+        ] } },
       ]);
     });
   });

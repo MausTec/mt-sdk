@@ -9,6 +9,7 @@
 import type {
   DefNode,
   Expr,
+  GlobalDecl,
   LiteralExpr,
   FnNode,
   LocalDeclStmt,
@@ -25,6 +26,7 @@ import type {
 } from "../../core/mtp-types.js";
 import type { EmitContext } from "./context.js";
 import { BlockEmitContext } from "./context.js";
+import type { EmitVarInfo } from "./context.js";
 import { emitStatements } from "./statements.js";
 import { exprToValue, exprToActions } from "./expressions.js";
 
@@ -99,6 +101,38 @@ export function extractLocals(body: Stmt[]): {
   return { vars, initActions };
 }
 
+/**
+ * Build a variable info map from the function body's local declarations,
+ * function parameters, and the plugin's global declarations.
+ */
+function buildVarInfoMap(
+  body: Stmt[],
+  params?: { name: string; varType: string }[],
+  globals?: GlobalDecl[],
+): Map<string, EmitVarInfo> {
+  const vars = new Map<string, EmitVarInfo>();
+
+  if (globals) {
+    for (const g of globals) {
+      vars.set(g.name, { varType: g.varType, arraySize: g.arraySize ?? null });
+    }
+  }
+
+  if (params) {
+    for (const p of params) {
+      vars.set(p.name, { varType: p.varType as "int" | "bool" | "string", arraySize: null });
+    }
+  }
+
+  for (const stmt of body) {
+    if (stmt.kind === "LocalDecl") {
+      vars.set(stmt.name, { varType: stmt.varType, arraySize: stmt.arraySize });
+    }
+  }
+
+  return vars;
+}
+
 // --- Local function scope -----------------------------------------------------
 
 /**
@@ -130,8 +164,10 @@ export function emitDef(
   ctx: EmitContext,
   def: DefNode,
   localFunctions?: Map<string, string[]>,
+  globals?: GlobalDecl[],
 ): EmittedFunctionDef {
-  const blockCtx = new BlockEmitContext(localFunctions);
+  const varInfo = buildVarInfoMap(def.body, def.params, globals);
+  const blockCtx = new BlockEmitContext(localFunctions, varInfo);
   const { vars } = extractLocals(def.body);
   const actions = emitStatements(def.body, blockCtx);
 
@@ -204,8 +240,10 @@ export function emitOnNode(
   ctx: EmitContext,
   handler: OnNode,
   localFunctions?: Map<string, string[]>,
+  globals?: GlobalDecl[],
 ): MtpFunctionDefObject {
-  const blockCtx = new BlockEmitContext(localFunctions);
+  const varInfo = buildVarInfoMap(handler.body, undefined, globals);
+  const blockCtx = new BlockEmitContext(localFunctions, varInfo);
   const { vars } = extractLocals(handler.body);
   const actions = emitStatements(handler.body, blockCtx);
 
@@ -225,12 +263,13 @@ export function emitHandlers(
   ctx: EmitContext,
   handlers: OnNode[],
   localFunctions?: Map<string, string[]>,
+  globals?: GlobalDecl[],
 ): Record<string, MtpFunctionDef> {
   const events: Record<string, MtpFunctionDef> = {};
 
   for (const handler of handlers) {
     if (!events[handler.event]) {
-      events[handler.event] = emitOnNode(ctx, handler, localFunctions);
+      events[handler.event] = emitOnNode(ctx, handler, localFunctions, globals);
     } else {
       ctx.error(
         `Multiple handlers defined for event "${handler.event}"`,

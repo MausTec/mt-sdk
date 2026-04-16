@@ -118,12 +118,14 @@ export class PluginEmitter {
       plugin["variables"] = this.emitGlobalsBlock(ast.globalsBlock);
     }
 
+    const globalDecls = ast.globalsBlock?.declarations;
+
     if (ast.defs.length > 0 || ast.functions.length > 0) {
       const localFunctions = buildLocalFunctionScope(ast);
       const functions: Record<string, MtpFunctionDef> = {};
 
       for (const def of ast.defs) {
-        functions[def.name] = emitDef(this.ctx, def, localFunctions);
+        functions[def.name] = emitDef(this.ctx, def, localFunctions, globalDecls);
       }
 
       for (const fn of ast.functions) {
@@ -138,7 +140,7 @@ export class PluginEmitter {
         ? buildLocalFunctionScope(ast)
         : undefined;
         
-      plugin["events"] = emitHandlers(this.ctx, ast.handlers, localFunctions);
+      plugin["events"] = emitHandlers(this.ctx, ast.handlers, localFunctions, globalDecls);
     }
 
     return { plugin: plugin as MtpPlugin, diagnostics: this.ctx.diagnostics };

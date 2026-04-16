@@ -27,6 +27,8 @@ import type {
   CompoundAssignStmt,
   CompoundAssignOp,
   WhileStmt,
+  ForStmt,
+  ForIterable,
   ExprStmt, 
   IfStmt, 
   ReturnStmt, 
@@ -1154,7 +1156,7 @@ class Parser {
       return null;
     }
 
-    // Unknown block-like construct: `identifier ... do ... end` (e.g. `for`)
+    // Unknown block-like construct: `identifier ... do ... end`
     // Lookahead on the current line: if `do` is found before a newline, skip it.
     if (t.kind === TokenKind.Identifier && this.hasDoOnCurrentLine()) {
       this.diagnostics.push(langError(`Unsupported block statement \`${t.value}\``, t.span));
@@ -1165,6 +1167,11 @@ class Parser {
     // Block while: `while cond do ... end`
     if (t.kind === TokenKind.While || t.kind === TokenKind.Until) {
       return this.parseWhileStmt();
+    }
+
+    // Block for: `for var in iterable do ... end`
+    if (t.kind === TokenKind.For) {
+      return this.parseForStmt();
     }
 
     // Block if: `if cond do ... [else ...] end`
@@ -1189,8 +1196,6 @@ class Parser {
       }
       return s;
     }
-
-    // TODO: Eventually add "for..in...do"
 
     // return statement
     if (t.kind === TokenKind.Return) return this.wrapConditional(this.parseReturnStmt());
@@ -1415,6 +1420,114 @@ class Parser {
       body,
       span: mergeSpan(kwToken.span, endSpan),
     } satisfies WhileStmt;
+  }
+
+  /**
+   * Parse `for var in iterable do ... end`.
+   *
+   * Iterable is either:
+   * - A range: `expr..expr` (inclusive, direction inferred)
+   * - A variable reference: `name` or `$name` (array or string)
+   *
+   * The loop variable must be a previously declared local or global
+   */
+  private parseForStmt(): ForStmt | null {
+    const forToken = this.advance(); // `for`
+
+    // Parse loop variable: `name` or `$name`
+    let variable: string;
+    let variableSpan: Span;
+    let global = false;
+
+    // TODO: Update this to also support config reads (however, config does not currently allow string?)
+    if (this.check(TokenKind.Identifier)) {
+      const varToken = this.advance();
+      variable = varToken.value;
+      variableSpan = varToken.span;
+    } else if (this.check(TokenKind.GlobalVar)) {
+      const varToken = this.advance();
+      variable = varToken.value;
+      variableSpan = varToken.span;
+      global = true;
+    } else {
+      this.diagnostics.push(langError("Expected loop variable after `for`", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    // Expect `in`
+    if (!this.check(TokenKind.In)) {
+      this.diagnostics.push(langError("Expected `in` after loop variable", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    this.advance(); // consume `in`
+
+    // Parse iterable: either `expr..expr` (range) or a variable reference
+    const iterable = this.parseForIterable();
+    if (iterable === null) return null;
+
+    this.expectDoAndNewline("after for iterable");
+
+    const body = this.parseBlockBody(true);
+
+    this.expect(TokenKind.End, "to close for block");
+    const endSpan = this.peekAhead(-1).span;
+
+    return {
+      kind: "For",
+      variable,
+      variableSpan,
+      global,
+      iterable,
+      body,
+      span: mergeSpan(forToken.span, endSpan),
+    } satisfies ForStmt;
+  }
+
+  /**
+   * Parse the iterable part of a for-loop.
+   * Returns a Range (`expr..expr`) or a Variable reference.
+   */
+  private parseForIterable(): ForIterable | null {
+    // Try to parse an expression, and if followed by `..`, it's a range start
+    const startExpr = this.parseExpr();
+
+    if (!startExpr) {
+      this.diagnostics.push(langError("Expected iterable after `in`", this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    // Range: `start..end`
+    // TODO: Allowing variables for a range operation is powerful, but it presents a halting problem quandry
+    if (this.check(TokenKind.DotDot)) {
+      this.advance(); // consume `..`
+      const endExpr = this.parseExpr();
+
+      if (!endExpr) {
+        this.diagnostics.push(langError("Expected end of range after `..`", this.peek().span));
+        this.skipToNextLine();
+        return null;
+      }
+
+      return { kind: "Range", start: startExpr, end: endExpr };
+    }
+
+    // Variable reference: must be an identifier or global var
+    if (startExpr.kind === "Identifier") {
+      return { kind: "Variable", name: startExpr.name, global: false, span: startExpr.span };
+    }
+
+    if (startExpr.kind === "GlobalVar") {
+      return { kind: "Variable", name: startExpr.name, global: true, span: startExpr.span };
+    }
+
+    this.diagnostics.push(
+      langError("For-loop iterable must be a range (`a..b`) or a variable", startExpr.span),
+    );
+    return null;
   }
 
   /** Parse `return [expr]`. Postfix guard is handled by the caller via `wrapConditional`. */

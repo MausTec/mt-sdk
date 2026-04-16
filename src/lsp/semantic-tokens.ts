@@ -321,6 +321,14 @@ function visitStmt(
       for (const s of stmt.body) visitStmt(builder, symbols, ctx, s);
       break;
 
+    case "For":
+      if (stmt.iterable.kind === "Range") {
+        visitExpr(builder, symbols, ctx, stmt.iterable.start);
+        visitExpr(builder, symbols, ctx, stmt.iterable.end);
+      }
+      for (const s of stmt.body) visitStmt(builder, symbols, ctx, s);
+      break;
+
     case "CompoundAssign":
       visitExpr(builder, symbols, ctx, stmt.value);
       break;
