@@ -189,6 +189,12 @@ function validateStmt(
       break;
     }
 
+    case "AssignIndex":
+      validateExpr(diags, symbols, ctx, stmt.target);
+      validateExpr(diags, symbols, ctx, stmt.index);
+      validateExpr(diags, symbols, ctx, stmt.value);
+      break;
+
     case "ExprStmt":
       validateExpr(diags, symbols, ctx, stmt.expr);
       break;

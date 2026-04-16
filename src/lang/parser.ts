@@ -23,6 +23,7 @@ import type {
   LocalDeclStmt, 
   AssignLocalStmt, 
   AssignGlobalStmt, 
+  AssignIndexStmt,
   ExprStmt, 
   IfStmt, 
   ReturnStmt, 
@@ -1252,13 +1253,13 @@ class Parser {
           return null;
         }
 
-        // Emit as an ExprStmt wrapping a synthetic representation — the emitter
-        // will eventually lower this to a `setbyte` action.
         return {
-          kind: "ExprStmt",
-          expr: { ...expr, span: mergeSpan(expr.span, value.span) },
+          kind: "AssignIndex",
+          target: expr.target,
+          index: expr.index,
+          value,
           span: mergeSpan(expr.span, value.span),
-        } satisfies ExprStmt;
+        } satisfies AssignIndexStmt;
       }
 
       this.diagnostics.push(langError("Unexpected `=` in statement: assignment must be `name = value`", this.peek().span));

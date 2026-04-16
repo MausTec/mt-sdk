@@ -1057,3 +1057,58 @@ end`;
     expect(match.serial).toBe("ABC123");
   });
 });
+
+// ===========================================================================
+// Index assignment (setbyte) — end-to-end
+// ===========================================================================
+
+// TODO: The global array declaration syntax was changed from `int[10] data = 0` to `int data[10]`,
+// This reflects our decision to remove initialization (runtime zero-inits arrays) and unify the byte
+// array size after the name, not after the type. A further discussion point is if we should add a `byte`
+// type specifically for byte arrays, since we only support one type of array, but that requires mt-actions
+// runtime review.
+
+describe("index assignment (setbyte)", () => {
+  it("compiles arr[i] = val to setbyte action", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int data[10]
+  end
+
+  def write(int idx) do
+    int val = 5
+    $data[idx] = val
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.write;
+    // Should contain a setbyte action
+    const setbyte = fn.actions.find((a: any) => a.setbyte !== undefined);
+    expect(setbyte).toBeDefined();
+    expect(setbyte.setbyte).toEqual(["$data", "$idx", "$val"]);
+  });
+
+  it("compiles getbyte (index read) to getbyte action", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int data[10]
+  end
+
+  def read(int idx) do
+    int val = 0
+    val = $data[idx]
+    return val
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.read;
+    const getbyte = fn.actions.find((a: any) => a.getbyte !== undefined);
+    expect(getbyte).toBeDefined();
+    expect(getbyte.getbyte).toEqual(["$data", "$idx"]);
+    expect(getbyte.to).toBe("$val");
+  });
+
+  // TODO: Add test cases for local byte array initialization as well.
+});

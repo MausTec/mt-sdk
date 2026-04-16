@@ -1,9 +1,9 @@
 import type { Stmt } from "../ast.js";
 import type { MtpAction, MtpActionObject, MtpConditional } from "../../core/mtp-types.js";
 import type { BlockEmitContext } from "./context.js";
-import { exprToValue, exprToActions } from "./expressions.js";
+import { exprToValue, exprToActions, resolveArg } from "./expressions.js";
 import { exprToCondition, invertCondition } from "./conditions.js";
-import type { LocalDeclStmt, ReturnStmt, IfStmt, ConditionalStmt, Expr } from "../ast.js";
+import type { LocalDeclStmt, AssignIndexStmt, ReturnStmt, IfStmt, ConditionalStmt, Expr } from "../ast.js";
 
 /**
  * Compile a statement list into mt-actions action objects.
@@ -34,6 +34,8 @@ function emitStatement(stmt: Stmt, ctx: BlockEmitContext): MtpAction[] {
       return emitAssign(`$${stmt.name}`, stmt.value, ctx);
     case "AssignGlobal":
       return emitAssign(`$${stmt.name}`, stmt.value, ctx);
+    case "AssignIndex":
+      return emitAssignIndex(stmt, ctx);
     case "ExprStmt":
       return exprToActions(stmt.expr, ctx);
     case "Return":
@@ -76,6 +78,25 @@ function emitAssign(target: string, expr: Expr, ctx: BlockEmitContext): MtpActio
   }
 
   return exprToActions(expr, ctx, target);
+}
+
+// --- AssignIndex (setbyte) ----------------------------------------------------
+
+/**
+ * Index assignment: `target[index] = value` -> `{ "setbyte": [array, index, value] }`
+ *
+ * All three operands are resolved to values, with complex sub-expressions
+ * pre-evaluated to temps.
+ */
+function emitAssignIndex(stmt: AssignIndexStmt, ctx: BlockEmitContext): MtpAction[] {
+  const prereqs: MtpAction[] = [];
+  const arrayVal = resolveArg(stmt.target, ctx, prereqs, false);
+  const indexVal = resolveArg(stmt.index, ctx, prereqs, false);
+  const valueVal = resolveArg(stmt.value, ctx, prereqs, !ctx.accumulatorReserved);
+
+  const obj = Object.create(null) as MtpActionObject;
+  obj.setbyte = [arrayVal, indexVal, valueVal];
+  return [...prereqs, obj];
 }
 
 // --- Return -------------------------------------------------------------------

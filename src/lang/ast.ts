@@ -119,6 +119,7 @@ export type Stmt =
   | LocalDeclStmt
   | AssignLocalStmt
   | AssignGlobalStmt
+  | AssignIndexStmt
   | ExprStmt
   | IfStmt
   | ReturnStmt
@@ -151,6 +152,14 @@ export interface AssignGlobalStmt extends BaseNode {
   kind: "AssignGlobal";
   name: string;
   nameSpan: Span;
+  value: Expr;
+}
+
+/** `target[index] = value` — index assignment (setbyte). */
+export interface AssignIndexStmt extends BaseNode {
+  kind: "AssignIndex";
+  target: Expr;
+  index: Expr;
   value: Expr;
 }
 

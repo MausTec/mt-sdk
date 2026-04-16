@@ -189,6 +189,11 @@ function visitStmt(node: Stmt, line: number, col: number, path: ASTPath): boolea
     case "AssignGlobal":
       visitExpr(node.value, line, col, path);
       break;
+    case "AssignIndex":
+      if (visitExpr(node.target, line, col, path)) break;
+      if (visitExpr(node.index, line, col, path)) break;
+      visitExpr(node.value, line, col, path);
+      break;
     case "ExprStmt":
       visitExpr(node.expr, line, col, path);
       break;

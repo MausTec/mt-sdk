@@ -293,6 +293,12 @@ function visitStmt(
       visitExpr(builder, symbols, ctx, stmt.value);
       break;
 
+    case "AssignIndex":
+      visitExpr(builder, symbols, ctx, stmt.target);
+      visitExpr(builder, symbols, ctx, stmt.index);
+      visitExpr(builder, symbols, ctx, stmt.value);
+      break;
+
     case "ExprStmt":
       visitExpr(builder, symbols, ctx, stmt.expr);
       break;

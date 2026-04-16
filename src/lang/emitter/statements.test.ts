@@ -335,4 +335,56 @@ describe("emitStatements", () => {
       expect(ctx.diagnostics).toEqual([]);
     });
   });
+
+  // --- AssignIndex (setbyte) --------------------------------------------------
+
+  describe("AssignIndex", () => {
+    it("emits setbyte with simple operands", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "AssignIndex",
+        target: { kind: "Identifier", name: "tape", span: SPAN },
+        index: { kind: "Identifier", name: "ptr", span: SPAN },
+        value: lit(42),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { setbyte: ["$tape", "$ptr", 42] },
+      ]);
+    });
+
+    it("emits setbyte with global array and global index", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "AssignIndex",
+        target: { kind: "GlobalVar", name: "tape", span: SPAN },
+        index: { kind: "GlobalVar", name: "ptr", span: SPAN },
+        value: { kind: "Identifier", name: "val", span: SPAN },
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { setbyte: ["$tape", "$ptr", "$val"] },
+      ]);
+    });
+
+    it("pre-evaluates complex value to temp or accumulator", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "AssignIndex",
+        target: { kind: "Identifier", name: "arr", span: SPAN },
+        index: lit(0),
+        value: {
+          kind: "Binary", op: "+",
+          left: { kind: "Identifier", name: "x", span: SPAN },
+          right: lit(1),
+          span: SPAN,
+        },
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { add: ["$x", 1] },
+        { setbyte: ["$arr", 0, "$_"] },
+      ]);
+    });
+  });
 });
