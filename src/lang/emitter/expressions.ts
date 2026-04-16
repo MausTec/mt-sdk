@@ -6,6 +6,8 @@ import type {
   ErrorCodeExpr,
   IdentifierExpr,
   CallExpr,
+  PipeExpr,
+  IndexExpr,
   BinaryOp,
 } from "../ast.js";
 import type { MtpAction, MtpActionObject, MtpValue } from "../../core/mtp-types.js";
@@ -190,9 +192,10 @@ export function exprToActions(
       return emitCall(expr, ctx, target);
 
     case "Pipe":
+      return emitPipe(expr, ctx, target);
+
     case "Index":
-      // TODO: Implement in a future phase.
-      return [];
+      return emitIndex(expr, ctx, target);
   }
 }
 
@@ -254,4 +257,70 @@ function emitCall(
 
   const action = actionObj(actionKey, argValue);
   return [...prereqs, withTarget(action, target)];
+}
+
+// --- Pipe emitter -------------------------------------------------------------
+
+/**
+ * Emit a pipe chain: `head |> step1() |> step2()`.
+ *
+ * The head is evaluated first. Each step receives the previous result in `$_`.
+ * The accumulator is reserved during the entire chain so that inner calls
+ * don't clobber the carried value.
+ *
+ * The final step's result lands in `target` (or `$_` if no target).
+ */
+function emitPipe(
+  expr: PipeExpr,
+  ctx: BlockEmitContext,
+  target?: string,
+): MtpAction[] {
+  const actions: MtpAction[] = [];
+
+  // Emit head, and the result must flow to $_ for the chain.
+  // Simple expressions need an explicit `set` to load into $_;
+  // complex ones naturally target $_ when no `to` is specified.
+  if (isSimpleExpr(expr.head)) {
+    actions.push(actionObj("set", exprToValue(expr.head, ctx)!));
+  } else {
+    actions.push(...exprToActions(expr.head, ctx));
+  }
+
+  // Reserve accumulator for the chain
+  // TODO: If the accumulator is already reserved before entering the pipe,
+  // we may need to spill $_ to a temp so that the chain doesn't clobber
+  // the outer value. Or, we could error spectacularly.
+
+  const wasReserved = ctx.accumulatorReserved;
+  ctx.accumulatorReserved = true;
+
+  for (let i = 0; i < expr.steps.length; i++) {
+    const step = expr.steps[i]!;
+    const isLast = i === expr.steps.length - 1;
+
+    // Last step gets the target; intermediate steps flow to $_
+    actions.push(...emitCall(step.call, ctx, isLast ? target : undefined));
+  }
+
+  ctx.accumulatorReserved = wasReserved;
+  return actions;
+}
+
+// --- Index emitter (getbyte) --------------------------------------------------
+
+/**
+ * Emit an index access: `name[expr]` → `{ "getbyte": [array, index], to? }`.
+ *
+ * The target (array) and index are resolved as values. Complex indices
+ * are pre-evaluated to temps.
+ */
+function emitIndex(
+  expr: IndexExpr,
+  ctx: BlockEmitContext,
+  target?: string,
+): MtpAction[] {
+  const prereqs: MtpAction[] = [];
+  const arrayVal = resolveArg(expr.target, ctx, prereqs, false);
+  const indexVal = resolveArg(expr.index, ctx, prereqs, false);
+  return [...prereqs, withTarget(actionObj("getbyte", [arrayVal, indexVal]), target)];
 }

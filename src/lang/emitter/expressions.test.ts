@@ -396,4 +396,104 @@ describe("exprToActions", () => {
       ]);
     });
   });
+
+  // --- Pipe -------------------------------------------------------------------
+
+  describe("Pipe", () => {
+    it("emits head → $_ then steps in chain, final step to target", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Pipe",
+        head: { kind: "Literal", value: 5, span: SPAN },
+        steps: [
+          {
+            call: { kind: "Call", name: "toString", args: [], span: SPAN },
+            carriedType: "unknown",
+          },
+          {
+            call: { kind: "Call", name: "concat", args: [
+              { kind: "Literal", value: "prefix:", span: SPAN },
+              { kind: "Accumulator", span: SPAN },
+            ], span: SPAN },
+            carriedType: "unknown",
+          },
+        ],
+        span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$result")).toEqual([
+        { set: 5 },                                   // head → $_
+        { toString: [] },                              // step 1 → $_
+        { concat: ["prefix:", "$_"], to: "$result" },  // step 2 → target
+      ]);
+    });
+
+    it("single-step pipe sends head to $_, step to target", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Pipe",
+        head: { kind: "GlobalVar", name: "val", span: SPAN },
+        steps: [
+          {
+            call: { kind: "Call", name: "round", args: [], span: SPAN },
+            carriedType: "unknown",
+          },
+        ],
+        span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$out")).toEqual([
+        { set: "$val" },       // head → $_
+        { round: [], to: "$out" },  // step → target
+      ]);
+    });
+  });
+
+  // --- Index (getbyte) --------------------------------------------------------
+
+  describe("Index", () => {
+    it("emits getbyte for simple index access", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Index",
+        target: { kind: "Identifier", name: "tape", span: SPAN },
+        index: { kind: "Literal", value: 3, span: SPAN },
+        span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$out")).toEqual([
+        { getbyte: ["$tape", 3], to: "$out" },
+      ]);
+    });
+
+    it("pre-evaluates complex index to temp", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Index",
+        target: { kind: "Identifier", name: "arr", span: SPAN },
+        index: {
+          kind: "Binary",
+          op: "+",
+          left: { kind: "Identifier", name: "i", span: SPAN },
+          right: { kind: "Literal", value: 1, span: SPAN },
+          span: SPAN,
+        },
+        span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$val")).toEqual([
+        { add: ["$i", 1], to: "$__t0" },
+        { getbyte: ["$arr", "$__t0"], to: "$val" },
+      ]);
+    });
+
+    it("getbyte with global array and global index", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Index",
+        target: { kind: "GlobalVar", name: "buffer", span: SPAN },
+        index: { kind: "GlobalVar", name: "ptr", span: SPAN },
+        span: SPAN,
+      };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { getbyte: ["$buffer", "$ptr"] },
+      ]);
+    });
+  });
 });
