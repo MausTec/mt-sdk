@@ -215,6 +215,17 @@ function visitStmt(node: Stmt, line: number, col: number, path: ASTPath): boolea
       if (node.value !== null) visitExpr(node.value, line, col, path);
       break;
 
+    case "While":
+      if (visitExpr(node.condition, line, col, path)) break;
+      for (const s of node.body) {
+        if (visitStmt(s, line, col, path)) return true;
+      }
+      break;
+
+    case "CompoundAssign":
+      visitExpr(node.value, line, col, path);
+      break;
+
     case "Conditional":
       if (visitExpr(node.condition, line, col, path)) break;
       visitStmt(node.body, line, col, path);

@@ -376,6 +376,94 @@ end`;
   });
 });
 
+describe("baseline: conditionals if and unless emit correctly", () => {
+  it("emits an if conditional correctly", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int x = 5
+    if x > 0 do
+      x = 10
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"];
+    const def = fn as { actions?: unknown[] };
+    expect(def.actions).toContainEqual({
+      if: {
+        gt: ["$x", 0],
+        then: [{ set: { $x: 10 } }]
+      }
+    });
+  });
+
+  it("emits an unless conditional correctly", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int x = 5
+    unless x > 0 do
+      x = 10
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"];
+    const def = fn as { actions?: unknown[] };
+    expect(def.actions).toContainEqual({
+      if: {
+        lte: ["$x", 0],
+        then: [{ set: { $x: 10 } }]
+      }
+    });
+  });
+});
+
+describe("baseline: loops while and until emit correctly", () => {
+  it("emits a while loop correctly", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int x = 0
+    while x < 10 do
+      x = x + 1
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"];
+    const def = fn as { actions?: unknown[] };
+    expect(def.actions).toContainEqual({
+      while: {
+        lt: ["$x", 10],
+        then: [{ add: ["$x", 1], to: "$x" }]
+      }
+    });
+  });
+
+  it("emits an until loop correctly", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int x = 0
+    until x >= 10 do
+      x = x + 1
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"];
+    const def = fn as { actions?: unknown[] };
+    expect(def.actions).toContainEqual({
+      while: {
+        lt: ["$x", 10],
+        then: [{ add: ["$x", 1], to: "$x" }]
+      }
+    });
+  });
+});
+
 // --- Phase 2 — Local arrays & index expressions -----------------------------
 
 describe("Phase 2: local array declarations", () => {
@@ -1111,4 +1199,276 @@ end`;
   });
 
   // TODO: Add test cases for local byte array initialization as well.
+});
+
+// ===========================================================================
+// While loop — end-to-end
+// ===========================================================================
+
+describe("while loop", () => {
+  it("compiles while block to while action", () => {
+    const src = `
+defplugin "Test" do
+  def countdown() do
+    int i = 10
+    while i > 0 do
+      i -= 1
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.countdown;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 10 } },
+      { while: { gt: ["$i", 0], then: [{ dec: "$i" }] } },
+    ]);
+  });
+
+  it("compiles until block with inverted condition", () => {
+    const src = `
+defplugin "Test" do
+  def waitForZero() do
+    int x = 5
+    until x == 0 do
+      x -= 1
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.waitForZero;
+    expect(fn.actions).toEqual([
+      { set: { "$x": 5 } },
+      { while: { neq: ["$x", 0], then: [{ dec: "$x" }] } },
+    ]);
+  });
+});
+
+// ===========================================================================
+// Compound assignment — end-to-end
+// ===========================================================================
+
+describe("compound assignment", () => {
+  it("compiles local += 1 to inc", () => {
+    const src = `
+defplugin "Test" do
+  def step() do
+    int i = 0
+    i += 1
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.step;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 0 } },
+      { inc: "$i" },
+    ]);
+  });
+
+  it("compiles global -= 1 to dec", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int lives = 3
+  end
+
+  def die() do
+    $lives -= 1
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.die;
+    expect(fn.actions).toEqual([
+      { dec: "$lives" },
+    ]);
+  });
+
+  it("compiles *= to mul with self-assign", () => {
+    const src = `
+defplugin "Test" do
+  def doubleIt() do
+    int x = 1
+    x *= 2
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.doubleIt;
+    expect(fn.actions).toEqual([
+      { set: { "$x": 1 } },
+      { mul: ["$x", 2], to: "$x" },
+    ]);
+  });
+});
+
+// ===========================================================================
+// Postfix while/until — end-to-end
+// ===========================================================================
+
+describe("postfix while/until", () => {
+  it("compiles postfix while guard", () => {
+    const src = `
+defplugin "Test" do
+  def drain() do
+    int n = 10
+    n -= 1 while n > 0
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.drain;
+    expect(fn.actions).toEqual([
+      { set: { "$n": 10 } },
+      { while: { gt: ["$n", 0], then: [{ dec: "$n" }] } },
+    ]);
+  });
+
+  it("compiles postfix until guard with inverted condition", () => {
+    const src = `
+defplugin "Test" do
+  def fill() do
+    int i = 0
+    i += 1 until i == 10
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.fill;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 0 } },
+      { while: { neq: ["$i", 10], then: [{ inc: "$i" }] } },
+    ]);
+  });
+});
+
+// ===========================================================================
+// While loop — end-to-end
+// ===========================================================================
+
+describe("while loop", () => {
+  it("compiles while block to while action", () => {
+    const src = `
+defplugin "Test" do
+  def countdown() do
+    int i = 10
+    while i > 0 do
+      i -= 1
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.countdown;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 10 } },
+      { while: { gt: ["$i", 0], then: [{ dec: "$i" }] } },
+    ]);
+  });
+
+  it("compiles until block with inverted condition", () => {
+    const src = `
+defplugin "Test" do
+  def waitForZero() do
+    int x = 5
+    until x == 0 do
+      x -= 1
+    end
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.waitForZero;
+    expect(fn.actions).toEqual([
+      { set: { "$x": 5 } },
+      { while: { neq: ["$x", 0], then: [{ dec: "$x" }] } },
+    ]);
+  });
+});
+
+// ===========================================================================
+// Compound assignment — end-to-end
+// ===========================================================================
+
+describe("compound assignment", () => {
+  it("compiles local += 1 to inc", () => {
+    const src = `
+defplugin "Test" do
+  def step() do
+    int i = 0
+    i += 1
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.step;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 0 } },
+      { inc: "$i" },
+    ]);
+  });
+
+  it("compiles global -= 1 to dec", () => {
+    const src = `
+defplugin "Test" do
+  globals do
+    int lives = 3
+  end
+
+  def die() do
+    $lives -= 1
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.die;
+    expect(fn.actions).toEqual([
+      { dec: "$lives" },
+    ]);
+  });
+
+  it("compiles *= to mul with self-assign", () => {
+    const src = `
+defplugin "Test" do
+  def doubleIt() do
+    int x = 1
+    x *= 2
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.doubleIt;
+    expect(fn.actions).toEqual([
+      { set: { "$x": 1 } },
+      { mul: ["$x", 2], to: "$x" },
+    ]);
+  });
+});
+
+// ===========================================================================
+// Postfix while/until — end-to-end
+// ===========================================================================
+
+describe("postfix while/until", () => {
+  it("compiles postfix while guard", () => {
+    const src = `
+defplugin "Test" do
+  def drain() do
+    int n = 10
+    n -= 1 while n > 0
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.drain;
+    expect(fn.actions).toEqual([
+      { set: { "$n": 10 } },
+      { while: { gt: ["$n", 0], then: [{ dec: "$n" }] } },
+    ]);
+  });
+
+  it("compiles postfix until guard with inverted condition", () => {
+    const src = `
+defplugin "Test" do
+  def fill() do
+    int i = 0
+    i += 1 until i == 10
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.fill;
+    expect(fn.actions).toEqual([
+      { set: { "$i": 0 } },
+      { while: { neq: ["$i", 10], then: [{ inc: "$i" }] } },
+    ]);
+  });
 });

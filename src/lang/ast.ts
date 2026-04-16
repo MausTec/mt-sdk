@@ -120,8 +120,10 @@ export type Stmt =
   | AssignLocalStmt
   | AssignGlobalStmt
   | AssignIndexStmt
+  | CompoundAssignStmt
   | ExprStmt
   | IfStmt
+  | WhileStmt
   | ReturnStmt
   | ConditionalStmt;
 
@@ -171,9 +173,31 @@ export interface ExprStmt extends BaseNode {
 
 export interface IfStmt extends BaseNode {
   kind: "If";
+  guard: "if" | "unless";
   condition: Expr;
   then: Stmt[];
   else: Stmt[] | null;
+}
+
+/** `while cond do...end` or `until cond do...end` loop. */
+export interface WhileStmt extends BaseNode {
+  kind: "While";
+  guard: "while" | "until";
+  condition: Expr;
+  body: Stmt[];
+}
+
+export type CompoundAssignOp = "+=" | "-=" | "*=" | "/=";
+
+/** `name += expr` / `$name -= expr` etc. */
+export interface CompoundAssignStmt extends BaseNode {
+  kind: "CompoundAssign";
+  target: string;
+  targetSpan: Span;
+  /** Whether the target is a global ($name) or local. */
+  global: boolean;
+  op: CompoundAssignOp;
+  value: Expr;
 }
 
 export interface ReturnStmt extends BaseNode {
@@ -182,11 +206,12 @@ export interface ReturnStmt extends BaseNode {
 }
 
 /**
- * Postfix conditional wrapper: `stmt if cond` / `stmt unless cond`.
+ * Postfix conditional wrapper: `stmt if cond` / `stmt unless cond` /
+ * `stmt while cond` / `stmt until cond`.
  */
 export interface ConditionalStmt extends BaseNode {
   kind: "Conditional";
-  guard: "if" | "unless";
+  guard: "if" | "unless" | "while" | "until";
   condition: Expr;
   body: Stmt;
 }

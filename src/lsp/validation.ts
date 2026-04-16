@@ -213,6 +213,15 @@ function validateStmt(
       if (stmt.value !== null) validateExpr(diags, symbols, ctx, stmt.value);
       break;
 
+    case "While":
+      validateExpr(diags, symbols, ctx, stmt.condition);
+      for (const s of stmt.body) validateStmt(diags, symbols, ctx, s);
+      break;
+
+    case "CompoundAssign":
+      validateExpr(diags, symbols, ctx, stmt.value);
+      break;
+
     case "Conditional":
       validateStmt(diags, symbols, ctx, stmt.body);
       validateExpr(diags, symbols, ctx, stmt.condition);

@@ -316,6 +316,15 @@ function visitStmt(
       if (stmt.value !== null) visitExpr(builder, symbols, ctx, stmt.value);
       break;
 
+    case "While":
+      visitExpr(builder, symbols, ctx, stmt.condition);
+      for (const s of stmt.body) visitStmt(builder, symbols, ctx, s);
+      break;
+
+    case "CompoundAssign":
+      visitExpr(builder, symbols, ctx, stmt.value);
+      break;
+
     case "Conditional":
       // Body appears before condition in source text (`stmt if cond`),
       // so visit body first to maintain document order for delta encoding.

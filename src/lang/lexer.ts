@@ -26,6 +26,8 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["if",        TokenKind.If],
   ["else",      TokenKind.Else],
   ["unless",    TokenKind.Unless],
+  ["while",     TokenKind.While],
+  ["until",     TokenKind.Until],
   ["return",    TokenKind.Return],
   ["and",       TokenKind.And],
   ["or",        TokenKind.Or],
@@ -339,9 +341,17 @@ class Lexer {
       }
 
       // --- Arithmetic operators -------------------------------------------------
-      case "+": kind = TokenKind.Plus;    break;
+      case "+": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.PlusAssign, "+=", start);
+          return true;
+        }
+        kind = TokenKind.Plus; break;
+      }
 
-      // Handle minus or arrow (`-` vs `->`)
+      // Handle minus, arrow, or minus-assign (`-` vs `->` vs `-=`)
       case "-": {
         if (this.peek(1) === ">") {
           this.advance();
@@ -349,11 +359,33 @@ class Lexer {
           this.push(TokenKind.Arrow, "->", start);
           return true;
         }
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.MinusAssign, "-=", start);
+          return true;
+        }
         kind = TokenKind.Minus;   break;
       }
 
-      case "*": kind = TokenKind.Star;    break;
-      case "/": kind = TokenKind.Slash;   break;
+      case "*": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.MulAssign, "*=", start);
+          return true;
+        }
+        kind = TokenKind.Star; break;
+      }
+      case "/": {
+        if (this.peek(1) === "=") {
+          this.advance();
+          this.advance();
+          this.push(TokenKind.DivAssign, "/=", start);
+          return true;
+        }
+        kind = TokenKind.Slash; break;
+      }
 
       // --- Comparison operators -------------------------------------------------
       case ">": {

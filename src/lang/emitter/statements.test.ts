@@ -305,6 +305,7 @@ describe("emitStatements", () => {
       const ctx = new BlockEmitContext();
       const stmts: Stmt[] = [{
         kind: "If",
+        guard: "if",
         condition: { kind: "Binary", op: "==", left: lit(1), right: lit(1), span: SPAN },
         then: [{ kind: "Return", value: lit(0), span: SPAN }],
         else: null,
@@ -384,6 +385,206 @@ describe("emitStatements", () => {
       expect(emitStatements(stmts, ctx)).toEqual([
         { add: ["$x", 1] },
         { setbyte: ["$arr", 0, "$_"] },
+      ]);
+    });
+  });
+
+  // --- While / Until ----------------------------------------------------------
+
+  describe("while block", () => {
+    it("emits a while action with condition and body", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "While",
+        guard: "while",
+        condition: {
+          kind: "Binary", op: "<",
+          left: { kind: "Identifier", name: "i", span: SPAN },
+          right: lit(10),
+          span: SPAN,
+        },
+        body: [
+          { kind: "ExprStmt", expr: { kind: "Call", name: "doSomething", args: [], span: SPAN }, span: SPAN },
+        ],
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { while: { lt: ["$i", 10], then: [{ doSomething: [] }] } },
+      ]);
+    });
+
+    it("inverts condition for until guard", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "While",
+        guard: "until",
+        condition: {
+          kind: "Binary", op: "==",
+          left: { kind: "Identifier", name: "done", span: SPAN },
+          right: lit(1),
+          span: SPAN,
+        },
+        body: [
+          { kind: "ExprStmt", expr: { kind: "Call", name: "work", args: [], span: SPAN }, span: SPAN },
+        ],
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { while: { neq: ["$done", 1], then: [{ work: [] }] } },
+      ]);
+    });
+  });
+
+  // --- Compound assignment (+=, -=, *=, /=) -----------------------------------
+
+  describe("compound assignment", () => {
+    it("optimizes += 1 to inc", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "CompoundAssign",
+        target: "counter",
+        targetSpan: SPAN,
+        global: false,
+        op: "+=",
+        value: lit(1),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { inc: "$counter" },
+      ]);
+    });
+
+    it("optimizes -= 1 to dec", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "CompoundAssign",
+        target: "counter",
+        targetSpan: SPAN,
+        global: false,
+        op: "-=",
+        value: lit(1),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { dec: "$counter" },
+      ]);
+    });
+
+    it("emits add for += with non-literal-1 value", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "CompoundAssign",
+        target: "speed",
+        targetSpan: SPAN,
+        global: true,
+        op: "+=",
+        value: lit(5),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { add: ["$speed", 5], to: "$speed" },
+      ]);
+    });
+
+    it("emits sub for -= with non-literal-1 value", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "CompoundAssign",
+        target: "x",
+        targetSpan: SPAN,
+        global: false,
+        op: "-=",
+        value: lit(3),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { sub: ["$x", 3], to: "$x" },
+      ]);
+    });
+
+    it("emits mul for *=", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "CompoundAssign",
+        target: "x",
+        targetSpan: SPAN,
+        global: false,
+        op: "*=",
+        value: lit(2),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { mul: ["$x", 2], to: "$x" },
+      ]);
+    });
+
+    it("emits div for /=", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "CompoundAssign",
+        target: "x",
+        targetSpan: SPAN,
+        global: false,
+        op: "/=",
+        value: lit(4),
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { div: ["$x", 4], to: "$x" },
+      ]);
+    });
+  });
+
+  // --- Postfix while/until guards ---------------------------------------------
+
+  describe("postfix while/until", () => {
+    it("wraps body in while action for postfix while", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "Conditional",
+        guard: "while",
+        condition: {
+          kind: "Binary", op: ">",
+          left: { kind: "Identifier", name: "n", span: SPAN },
+          right: lit(0),
+          span: SPAN,
+        },
+        body: {
+          kind: "CompoundAssign",
+          target: "n",
+          targetSpan: SPAN,
+          global: false,
+          op: "-=",
+          value: lit(1),
+          span: SPAN,
+        },
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { while: { gt: ["$n", 0], then: [{ dec: "$n" }] } },
+      ]);
+    });
+
+    it("wraps body in while with inverted condition for postfix until", () => {
+      const ctx = new BlockEmitContext();
+      const stmts: Stmt[] = [{
+        kind: "Conditional",
+        guard: "until",
+        condition: {
+          kind: "Binary", op: "==",
+          left: { kind: "Identifier", name: "x", span: SPAN },
+          right: lit(0),
+          span: SPAN,
+        },
+        body: {
+          kind: "ExprStmt",
+          expr: { kind: "Call", name: "tick", args: [], span: SPAN },
+          span: SPAN,
+        },
+        span: SPAN,
+      }];
+      expect(emitStatements(stmts, ctx)).toEqual([
+        { while: { neq: ["$x", 0], then: [{ tick: [] }] } },
       ]);
     });
   });

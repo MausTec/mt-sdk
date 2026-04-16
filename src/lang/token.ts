@@ -25,6 +25,8 @@ export enum TokenKind {
   If = "if",
   Else = "else",
   Unless = "unless",
+  While = "while",
+  Until = "until",
   Return = "return",
 
   // --- Modifier keywords -----------------------------------------------------
@@ -53,6 +55,10 @@ export enum TokenKind {
   Star = "*",
   Slash = "/",
   Assign = "=",
+  PlusAssign = "+=",
+  MinusAssign = "-=",
+  MulAssign = "*=",
+  DivAssign = "/=",
   EqEq = "==",
   NotEq = "!=",
   Gte = ">=",

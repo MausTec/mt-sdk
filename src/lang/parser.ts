@@ -24,6 +24,9 @@ import type {
   AssignLocalStmt, 
   AssignGlobalStmt, 
   AssignIndexStmt,
+  CompoundAssignStmt,
+  CompoundAssignOp,
+  WhileStmt,
   ExprStmt, 
   IfStmt, 
   ReturnStmt, 
@@ -131,6 +134,13 @@ function canStartExpr(t: Token): boolean {
     default:
       return false;
   }
+}
+
+function isCompoundAssign(kind: TokenKind): boolean {
+  return kind === TokenKind.PlusAssign ||
+    kind === TokenKind.MinusAssign ||
+    kind === TokenKind.MulAssign ||
+    kind === TokenKind.DivAssign;
 }
 
 // --- Parser class -------------------------------------------------------------
@@ -525,21 +535,11 @@ class Parser {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
-    // Optional array size: `int[4] name`
+    // Optional array size before name: `int[4] name`
     let arraySize: number | null = null;
 
     if (this.check(TokenKind.LBracket)) {
-      this.advance();
-      const sizeToken = this.peek();
-
-      if (sizeToken.kind === TokenKind.Integer) {
-        arraySize = parseInt(sizeToken.value, 10);
-        this.advance();
-      } else {
-        this.diagnostics.push(langError("Expected integer array size", sizeToken.span));
-      }
-
-      this.expect(TokenKind.RBracket, "after array size");
+      arraySize = this.parseArraySize();
 
       if (varType !== "int") {
         this.diagnostics.push(
@@ -556,6 +556,37 @@ class Parser {
     }
 
     const nameToken = this.advance();
+
+    // Optional array size after name: `int name[4]`
+    if (arraySize === null && this.check(TokenKind.LBracket)) {
+      arraySize = this.parseArraySize();
+
+      if (varType !== "int") {
+        this.diagnostics.push(
+          langError("Only `int` arrays are supported", typeToken.span),
+        );
+      }
+    }
+
+    // Arrays don't require (or allow) an initializer — the runtime zero-inits.
+    if (arraySize !== null) {
+      // Skip optional `= value` for backward compatibility
+      if (this.check(TokenKind.Assign)) {
+        this.advance();
+        this.parseScalarValue(); // consume and discard
+      }
+
+      return {
+        kind: "GlobalDecl",
+        span: mergeSpan(typeToken.span, nameToken.span),
+        label,
+        varType,
+        name: nameToken.value,
+        nameSpan: nameToken.span,
+        arraySize,
+        init: { kind: "Literal", varType: "int", value: 0, span: nameToken.span },
+      };
+    }
 
     this.expect(TokenKind.Assign, `after global name \`${nameToken.value}\``);
 
@@ -752,6 +783,25 @@ class Parser {
       value: expr,
       span: mergeSpan(keyToken.span, expr.span),
     };
+  }
+
+  /** Parse `[N]` array size specifier, consuming brackets. Returns the size or null on error. */
+  private parseArraySize(): number | null {
+    this.advance(); // consume `[`
+    const sizeToken = this.peek();
+    let arraySize: number | null = null;
+
+    if (sizeToken.kind === TokenKind.Integer) {
+      arraySize = parseInt(sizeToken.value, 10);
+      this.advance();
+    } else if (sizeToken.kind === TokenKind.RBracket) {
+      this.diagnostics.push(langError("Array size is required", sizeToken.span));
+    } else {
+      this.diagnostics.push(langError("Expected integer array size", sizeToken.span));
+    }
+
+    this.expect(TokenKind.RBracket, "after array size");
+    return arraySize;
   }
 
   /**
@@ -1121,7 +1171,7 @@ class Parser {
       return null;
     }
 
-    // Unknown block-like construct: `identifier ... do ... end` (e.g. `while`, `for`)
+    // Unknown block-like construct: `identifier ... do ... end` (e.g. `for`)
     // Lookahead on the current line: if `do` is found before a newline, skip it.
     if (t.kind === TokenKind.Identifier && this.hasDoOnCurrentLine()) {
       this.diagnostics.push(langError(`Unsupported block statement \`${t.value}\``, t.span));
@@ -1129,10 +1179,15 @@ class Parser {
       return null;
     }
 
+    // Block while: `while cond do ... end`
+    if (t.kind === TokenKind.While || t.kind === TokenKind.Until) {
+      return this.parseWhileStmt();
+    }
+
     // Block if: `if cond do ... [else ...] end`
     // TODO: This has an older draft for a pure inline IF syntax, but I think for simplicity we should evaluate
     // disallowing full inline, and error after the "do" on any other non-comment tokens.
-    if (t.kind === TokenKind.If) {
+    if (t.kind === TokenKind.If || t.kind == TokenKind.Unless) {
       const s = this.parseIfStmt();
       if (s === null) return null;
 
@@ -1152,13 +1207,12 @@ class Parser {
       return s;
     }
 
-    // TODO: Add other block constructs (while, unless, until, etc)
     // TODO: Eventually add "for..in...do"
 
     // return statement
     if (t.kind === TokenKind.Return) return this.wrapConditional(this.parseReturnStmt());
 
-    // Assignment or expression statement — eligible for postfix conditionals
+    // Assignment or expression statement - eligible for postfix conditionals
     const stmt = this.parseAssignOrExprStmt();
     return stmt !== null ? this.wrapConditional(stmt) : null;
   }
@@ -1170,6 +1224,29 @@ class Parser {
   private parseAssignOrExprStmt(): Stmt | null {
     const t = this.peek();
     const ahead = this.peekAhead(1);
+
+    // Compound assignment: `$name += expr`, `name -= expr`, etc.
+    if ((t.kind === TokenKind.GlobalVar || t.kind === TokenKind.Identifier) && isCompoundAssign(ahead.kind)) {
+      const nameTok = this.advance();
+      const opTok = this.advance();
+      const value = this.parseExpr();
+
+      if (!value) {
+        this.diagnostics.push(langError(`Expected value after \`${opTok.value}\``, this.peek().span));
+        this.skipToNextLine();
+        return null;
+      }
+
+      return {
+        kind: "CompoundAssign",
+        target: nameTok.value,
+        targetSpan: nameTok.span,
+        global: nameTok.kind === TokenKind.GlobalVar,
+        op: opTok.kind as CompoundAssignOp,
+        value,
+        span: mergeSpan(nameTok.span, value.span),
+      } satisfies CompoundAssignStmt;
+    }
 
     // $name = expr  (global assign)
     if (t.kind === TokenKind.GlobalVar && ahead.kind === TokenKind.Assign) {
@@ -1298,6 +1375,7 @@ class Parser {
   /** Parse `if cond do ... [else ...] end`. */
   private parseIfStmt(): IfStmt | null {
     const ifToken = this.advance(); // `if`
+    const guard = ifToken.kind === TokenKind.Unless ? "unless" : "if";
     const condition = this.parseExpr();
 
     if (!condition) {
@@ -1320,11 +1398,40 @@ class Parser {
 
     return {
       kind: "If",
+      guard,
       condition,
       then,
       else: elseBranch,
       span: mergeSpan(ifToken.span, endSpan),
     } satisfies IfStmt;
+  }
+
+  /** Parse `while cond do ... end` or `until cond do ... end`. */
+  private parseWhileStmt(): WhileStmt | null {
+    const kwToken = this.advance(); // `while` or `until`
+    const guard = kwToken.kind === TokenKind.Until ? "until" : "while";
+    const condition = this.parseExpr();
+
+    if (!condition) {
+      this.diagnostics.push(langError(`Expected condition after \`${guard}\``, this.peek().span));
+      this.skipToNextLine();
+      return null;
+    }
+
+    this.expectDoAndNewline(`after ${guard} condition`);
+
+    const body = this.parseBlockBody(true);
+
+    this.expect(TokenKind.End, `to close ${guard} block`);
+    const endSpan = this.peekAhead(-1).span;
+
+    return {
+      kind: "While",
+      guard,
+      condition,
+      body,
+      span: mergeSpan(kwToken.span, endSpan),
+    } satisfies WhileStmt;
   }
 
   /** Parse `return [expr]`. Postfix guard is handled by the caller via `wrapConditional`. */
@@ -1342,6 +1449,8 @@ class Parser {
       next.kind !== TokenKind.EOF &&
       next.kind !== TokenKind.If &&
       next.kind !== TokenKind.Unless &&
+      next.kind !== TokenKind.While &&
+      next.kind !== TokenKind.Until &&
       next.kind !== TokenKind.Comment
     ) {
       value = this.parseExpr();
@@ -1355,11 +1464,12 @@ class Parser {
   }
 
   /**
-   * If the current token is `if` or `unless`, parse a postfix conditional
-   * and wrap `inner` in a `ConditionalStmt`. Otherwise return `inner` as-is.
+   * If the current token is `if`, `unless`, `while`, or `until`, parse a
+   * postfix conditional / loop guard and wrap `inner`.
    */
   private wrapConditional(inner: Stmt): Stmt {
-    if (!this.check(TokenKind.If) && !this.check(TokenKind.Unless)) {
+    if (!this.check(TokenKind.If) && !this.check(TokenKind.Unless) &&
+        !this.check(TokenKind.While) && !this.check(TokenKind.Until)) {
       return inner;
     }
 
@@ -1371,10 +1481,9 @@ class Parser {
       return inner;
     }
 
-    // TODO: Upgrade the `as "if" | "unless"` type to a `GuardKeyword` type, which also supports `until` and `while`
     return {
       kind: "Conditional",
-      guard: kw.kind as "if" | "unless",
+      guard: kw.kind as "if" | "unless" | "while" | "until",
       condition,
       body: inner,
       span: mergeSpan(inner.span, condition.span),
@@ -1403,23 +1512,11 @@ class Parser {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
-    // Optional array size: `int[4] name`
+    // Optional array size before name: `int[4] name`
     let arraySize: number | null = null;
 
     if (this.check(TokenKind.LBracket)) {
-      this.advance();
-      const sizeToken = this.peek();
-
-      if (sizeToken.kind === TokenKind.Integer) {
-        arraySize = parseInt(sizeToken.value, 10);
-        this.advance();
-      } else if (sizeToken.kind === TokenKind.RBracket) {
-        this.diagnostics.push(langError("Array size is required", sizeToken.span));
-      } else {
-        this.diagnostics.push(langError("Expected integer array size", sizeToken.span));
-      }
-
-      this.expect(TokenKind.RBracket, "after array size");
+      arraySize = this.parseArraySize();
 
       if (varType !== "int") {
         this.diagnostics.push(
@@ -1437,6 +1534,18 @@ class Parser {
     }
 
     const nameToken = this.advance();
+
+    // Optional array size after name: `int name[4]`
+    if (arraySize === null && this.check(TokenKind.LBracket)) {
+      arraySize = this.parseArraySize();
+
+      if (varType !== "int") {
+        this.diagnostics.push(
+          langError("Only `int` arrays are supported", typeToken.span),
+        );
+      }
+    }
+
     let init: Expr | null = null;
 
     if (this.check(TokenKind.Assign)) {
