@@ -244,7 +244,156 @@ describe("exprToActions", () => {
   });
 
   // --- Remaining expression kinds (stubs) ---
-  // TODO: Call -> {funcName: [args]} or bare "funcName" string
   // TODO: Pipe -> action sequence with $_ carry-through
   // TODO: Index -> {getbyte: [target, index], to?: target}
+
+  // --- Call: host/builtin functions ---
+
+  describe("Call (host/builtin)", () => {
+    it("emits zero-arg call as empty array", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = { kind: "Call", name: "millis", args: [], span: SPAN };
+      expect(exprToActions(expr, ctx, "$t")).toEqual([
+        { millis: [], to: "$t" },
+      ]);
+    });
+
+    it("emits single-arg call as bare value", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Call", name: "bleWrite", args: [
+          { kind: "GlobalVar", name: "cmd", span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { bleWrite: "$cmd" },
+      ]);
+    });
+
+    it("emits multi-arg call as array", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Call", name: "random", args: [
+          { kind: "Literal", varType: "int", value: 0, span: SPAN },
+          { kind: "Literal", varType: "int", value: 255, span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$r")).toEqual([
+        { random: [0, 255], to: "$r" },
+      ]);
+    });
+
+    it("resolves complex args with last-arg-gets-accumulator", () => {
+      const ctx = new BlockEmitContext();
+      const expr: Expr = {
+        kind: "Call", name: "someHost", args: [
+          { kind: "ConfigRef", name: "a", span: SPAN },
+          { kind: "ConfigRef", name: "b", span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { getPluginConfig: "a", to: "$__t0" },
+        { getPluginConfig: "b" },
+        { someHost: ["$__t0", "$_"] },
+      ]);
+    });
+  });
+
+  // --- Call: plugin-local functions ---
+
+  describe("Call (plugin-local)", () => {
+    it("emits @-prefixed call with positional arg", () => {
+      const localFns = new Map([["mapSpeed", ["arg"]]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = {
+        kind: "Call", name: "mapSpeed", args: [
+          { kind: "GlobalVar", name: "speed", span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { "@mapSpeed": "$speed" },
+      ]);
+    });
+
+    it("emits @-prefixed call with target", () => {
+      const localFns = new Map([["mapSpeed", ["arg"]]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = {
+        kind: "Call", name: "mapSpeed", args: [
+          { kind: "Literal", varType: "int", value: 128, span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$level")).toEqual([
+        { "@mapSpeed": 128, to: "$level" },
+      ]);
+    });
+
+    it("emits @-prefixed call with multiple positional args", () => {
+      const localFns = new Map([["forward", ["from", "cmdlen"]]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = {
+        kind: "Call", name: "forward", args: [
+          { kind: "GlobalVar", name: "i", span: SPAN },
+          { kind: "GlobalVar", name: "len", span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx, "$i")).toEqual([
+        { "@forward": ["$i", "$len"], to: "$i" },
+      ]);
+    });
+
+    it("resolves complex args into prereqs for local calls", () => {
+      const localFns = new Map([["scale", ["val"]]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = {
+        kind: "Call", name: "scale", args: [
+          { kind: "Binary", op: "+", left: { kind: "Literal", varType: "int", value: 1, span: SPAN }, right: { kind: "Literal", varType: "int", value: 2, span: SPAN }, span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { add: [1, 2] },
+        { "@scale": "$_" },
+      ]);
+    });
+
+    it("emits zero-arg local call with empty array", () => {
+      const localFns = new Map([["reset", []]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = { kind: "Call", name: "reset", args: [], span: SPAN };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { "@reset": [] },
+      ]);
+    });
+
+    it("reports error for too many args", () => {
+      const localFns = new Map([["bump", ["val"]]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = {
+        kind: "Call", name: "bump", args: [
+          { kind: "Literal", varType: "int", value: 1, span: SPAN },
+          { kind: "Literal", varType: "int", value: 2, span: SPAN },
+        ], span: SPAN,
+      };
+      exprToActions(expr, ctx);
+      expect(ctx.diagnostics).toContainEqual(
+        expect.objectContaining({ level: "error", message: expect.stringContaining("expects 1 argument") }),
+      );
+    });
+
+    it("uses last-arg-gets-accumulator for local calls too", () => {
+      const localFns = new Map([["blend", ["a", "b"]]]);
+      const ctx = new BlockEmitContext(localFns);
+      const expr: Expr = {
+        kind: "Call", name: "blend", args: [
+          { kind: "ConfigRef", name: "x", span: SPAN },
+          { kind: "ConfigRef", name: "y", span: SPAN },
+        ], span: SPAN,
+      };
+      expect(exprToActions(expr, ctx)).toEqual([
+        { getPluginConfig: "x", to: "$__t0" },
+        { getPluginConfig: "y" },
+        { "@blend": ["$__t0", "$_"] },
+      ]);
+    });
+  });
 });

@@ -19,8 +19,8 @@ export class EmitContext {
 
 /**
  * Block-scoped context for emitting function/event bodies.
- * Extends {@link EmitContext} with temporary variable allocation
- * and accumulator-reservation tracking.
+ * Extends {@link EmitContext} with temporary variable allocation,
+ * accumulator-reservation tracking, and local function scope.
  *
  * Temp variables are named `__t0`, `__t1`, etc. The counter resets
  * after each top-level statement (via {@link resetTemps}), but the
@@ -28,6 +28,13 @@ export class EmitContext {
  * every slot that was ever needed.
  */
 export class BlockEmitContext extends EmitContext {
+  /**
+   * Map of local function names to their parameter names.
+   * Used by the Call emitter to distinguish plugin-local calls
+   * (`@`-prefixed, named args) from host/builtin calls (bare key).
+   */
+  readonly localFunctions: ReadonlyMap<string, string[]>;
+
   /** Current temp index, reset per statement. */
   private tempCounter = 0;
 
@@ -42,6 +49,11 @@ export class BlockEmitContext extends EmitContext {
    * arbitrary accumulator use will lead to code smell, and it should only ever appear in a pipe in the MTP context.
    */
   accumulatorReserved = false;
+
+  constructor(localFunctions?: Map<string, string[]>) {
+    super();
+    this.localFunctions = localFunctions ?? new Map();
+  }
 
   /**
    * Allocate a temp variable reference (`$__t0`, `$__t1`, ...).

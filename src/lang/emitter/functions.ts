@@ -13,6 +13,7 @@ import type {
   FnNode,
   LocalDeclStmt,
   OnNode,
+  PluginNode,
   Stmt,
 } from "../ast.js";
 import type {
@@ -98,14 +99,39 @@ export function extractLocals(body: Stmt[]): {
   return { vars, initActions };
 }
 
+// --- Local function scope -----------------------------------------------------
+
+/**
+ * Scan all `def` and `fn` nodes in a plugin to build a map of
+ * local function name -> parameter names. Used by the Call emitter
+ * to distinguish local calls (`@`-prefixed) from host calls.
+ */
+export function buildLocalFunctionScope(ast: PluginNode): Map<string, string[]> {
+  const scope = new Map<string, string[]>();
+
+  for (const def of ast.defs) {
+    scope.set(def.name, def.params.map((p) => p.name));
+  }
+
+  for (const fn of ast.functions) {
+    scope.set(fn.name, fn.params.map((p) => p.name));
+  }
+
+  return scope;
+}
+
 // --- Function emitters --------------------------------------------------------
 
 /**
  * Emits a `def` block — multi-statement function.
  * Extracts locals for the vars list, then delegates body to the statement emitter.
  */
-export function emitDef(ctx: EmitContext, def: DefNode): EmittedFunctionDef {
-  const blockCtx = new BlockEmitContext();
+export function emitDef(
+  ctx: EmitContext,
+  def: DefNode,
+  localFunctions?: Map<string, string[]>,
+): EmittedFunctionDef {
+  const blockCtx = new BlockEmitContext(localFunctions);
   const { vars } = extractLocals(def.body);
   const actions = emitStatements(def.body, blockCtx);
 
@@ -128,8 +154,12 @@ export function emitDef(ctx: EmitContext, def: DefNode): EmittedFunctionDef {
  * Emits a `fn` — pure single-expression function.
  * The body expression is compiled and wrapped in an implicit return.
  */
-export function emitFn(ctx: EmitContext, fn: FnNode): EmittedFunctionDef {
-  const blockCtx = new BlockEmitContext();
+export function emitFn(
+  ctx: EmitContext,
+  fn: FnNode,
+  localFunctions?: Map<string, string[]>,
+): EmittedFunctionDef {
+  const blockCtx = new BlockEmitContext(localFunctions);
 
   const simple = exprToValue(fn.body, blockCtx);
   let actions: MtpAction[];
@@ -173,8 +203,9 @@ export function emitFn(ctx: EmitContext, fn: FnNode): EmittedFunctionDef {
 export function emitOnNode(
   ctx: EmitContext,
   handler: OnNode,
+  localFunctions?: Map<string, string[]>,
 ): MtpFunctionDefObject {
-  const blockCtx = new BlockEmitContext();
+  const blockCtx = new BlockEmitContext(localFunctions);
   const { vars } = extractLocals(handler.body);
   const actions = emitStatements(handler.body, blockCtx);
 
@@ -193,12 +224,13 @@ export function emitOnNode(
 export function emitHandlers(
   ctx: EmitContext,
   handlers: OnNode[],
+  localFunctions?: Map<string, string[]>,
 ): Record<string, MtpFunctionDef> {
   const events: Record<string, MtpFunctionDef> = {};
 
   for (const handler of handlers) {
     if (!events[handler.event]) {
-      events[handler.event] = emitOnNode(ctx, handler);
+      events[handler.event] = emitOnNode(ctx, handler, localFunctions);
     } else {
       ctx.error(
         `Multiple handlers defined for event "${handler.event}"`,

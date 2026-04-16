@@ -19,6 +19,7 @@ import type { LangDiagnostic } from "../diagnostics.js";
 import { EmitContext } from "./context.js";
 import {
   exprToJson,
+  buildLocalFunctionScope,
   emitDef,
   emitFn,
   emitHandlers,
@@ -118,21 +119,26 @@ export class PluginEmitter {
     }
 
     if (ast.defs.length > 0 || ast.functions.length > 0) {
+      const localFunctions = buildLocalFunctionScope(ast);
       const functions: Record<string, MtpFunctionDef> = {};
 
       for (const def of ast.defs) {
-        functions[def.name] = emitDef(this.ctx, def);
+        functions[def.name] = emitDef(this.ctx, def, localFunctions);
       }
 
       for (const fn of ast.functions) {
-        functions[fn.name] = emitFn(this.ctx, fn);
+        functions[fn.name] = emitFn(this.ctx, fn, localFunctions);
       }
 
       plugin["functions"] = functions;
     }
 
     if (ast.handlers.length > 0) {
-      plugin["events"] = emitHandlers(this.ctx, ast.handlers);
+      const localFunctions = (ast.defs.length > 0 || ast.functions.length > 0)
+        ? buildLocalFunctionScope(ast)
+        : undefined;
+        
+      plugin["events"] = emitHandlers(this.ctx, ast.handlers, localFunctions);
     }
 
     return { plugin: plugin as MtpPlugin, diagnostics: this.ctx.diagnostics };

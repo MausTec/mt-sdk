@@ -5,6 +5,7 @@ import type {
   AccumulatorExpr,
   ErrorCodeExpr,
   IdentifierExpr,
+  CallExpr,
   BinaryOp,
 } from "../ast.js";
 import type { MtpAction, MtpActionObject, MtpValue } from "../../core/mtp-types.js";
@@ -186,9 +187,70 @@ export function exprToActions(
     }
 
     case "Call":
+      return emitCall(expr, ctx, target);
+
     case "Pipe":
     case "Index":
       // TODO: Implement in a future phase.
       return [];
   }
+}
+
+// --- Call emitter -------------------------------------------------------------
+
+/**
+ * Emit a function call expression.
+ *
+ * All calls use **positional** argument form in the JSON output:
+ * - 0 args → `[]`
+ * - 1 arg  → the value directly (scalar shorthand)
+ * - 2+ args → array of values
+ *
+ * Named args in the source language are compiled to positional by the
+ * compiler using the function's declared parameter order.
+ *
+ * **Plugin-local** calls (name found in `ctx.localFunctions`) are prefixed
+ * with `@` in the action key: `{ "@mapSpeed": [128], to? }`
+ *
+ * **Host/builtin** calls use bare keys: `{ "bleWrite": "$cmd", to? }`
+ */
+function emitCall(
+  expr: CallExpr,
+  ctx: BlockEmitContext,
+  target?: string,
+): MtpAction[] {
+  const isLocal = ctx.localFunctions.has(expr.name);
+
+  if (isLocal && expr.args.length > ctx.localFunctions.get(expr.name)!.length) {
+    const expected = ctx.localFunctions.get(expr.name)!.length;
+    
+    ctx.error(
+      `Function "${expr.name}" expects ${expected} argument(s), got ${expr.args.length}`,
+      expr.span,
+    );
+  }
+
+  const actionKey = isLocal ? `@${expr.name}` : expr.name;
+
+  const prereqs: MtpAction[] = [];
+  const resolvedArgs: MtpValue[] = [];
+
+  for (let i = 0; i < expr.args.length; i++) {
+    const isLast = i === expr.args.length - 1;
+    resolvedArgs.push(
+      resolveArg(expr.args[i]!, ctx, prereqs, isLast && !ctx.accumulatorReserved),
+    );
+  }
+
+  let argValue: MtpValue | MtpValue[];
+  if (resolvedArgs.length === 0) {
+    argValue = [];
+  } else if (resolvedArgs.length === 1) {
+    argValue = resolvedArgs[0]!;
+  } else {
+    argValue = resolvedArgs;
+  }
+
+  const action = actionObj(actionKey, argValue);
+  return [...prereqs, withTarget(action, target)];
 }
