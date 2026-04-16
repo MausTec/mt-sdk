@@ -179,7 +179,7 @@ describe("Phase 1: reject non-int arrays in globals", () => {
     const src = `
 defplugin "Test" do
   globals do
-    string[10] buffer = ""
+    string buffer[10]
   end
 end`;
     const errs = parseErrors(src);
@@ -192,7 +192,7 @@ end`;
     const src = `
 defplugin "Test" do
   globals do
-    bool[8] flags = false
+    bool flags[8]
   end
 end`;
     const errs = parseErrors(src);
@@ -205,7 +205,7 @@ end`;
     const src = `
 defplugin "Test" do
   globals do
-    int[100] tape = 0
+    int tape[100]
   end
 end`;
     const errs = parseErrors(src);
@@ -220,7 +220,7 @@ describe("Phase 1: global int arrays emit correctly", () => {
     const src = `
 defplugin "Test" do
   globals do
-    int[100] tape = 0
+    int tape[100]
   end
 end`;
     const plugin = transpileOk(src);
@@ -471,7 +471,7 @@ describe("Phase 2: local array declarations", () => {
     const src = `
 defplugin "Test" do
   def myFunc() do
-    int[10] buffer
+    int buffer[10]
   end
 end`;
     const errs = parseErrors(src);
@@ -482,7 +482,7 @@ end`;
     const src = `
 defplugin "Test" do
   def myFunc() do
-    string[20] buf
+    string buf[20]
   end
 end`;
     const errs = parseErrors(src);
@@ -495,7 +495,7 @@ end`;
     const src = `
 defplugin "Test" do
   def myFunc() do
-    bool[8] flags
+    bool flags[8]
   end
 end`;
     const errs = parseErrors(src);
@@ -508,7 +508,7 @@ end`;
     const src = `
 defplugin "Test" do
   def myFunc() do
-    int[] items
+    int items[]
   end
 end`;
     const errs = parseErrors(src);
@@ -519,7 +519,7 @@ end`;
     const src = `
 defplugin "Test" do
   def myFunc() do
-    int[10] buffer = 0
+    int buffer[10] = 0
   end
 end`;
     const errs = parseErrors(src);
@@ -532,7 +532,7 @@ describe("Phase 2: local arrays emit correctly", () => {
     const src = `
 defplugin "Test" do
   def myFunc() do
-    int[100] tape
+    int tape[100]
     int x = 5
   end
 end`;
@@ -554,7 +554,7 @@ end`;
     const src = `
 defplugin "Test" do
   on :connect do
-    int[50] buffer
+    int buffer[50]
   end
 end`;
     const plugin = transpileOk(src);
@@ -568,7 +568,7 @@ describe("Phase 2: index expressions in conditions and assignments", () => {
     const src = `
 defplugin "Test" do
   globals do
-    int[10] data = 0
+    int data[10]
   end
 
   def check() do
@@ -586,7 +586,7 @@ end`;
     const src = `
 defplugin "Test" do
   globals do
-    int[10] data = 0
+    int data[10]
   end
 
   def scan() do
@@ -604,7 +604,7 @@ end`;
     const src = `
 defplugin "Test" do
   globals do
-    int[10] data = 0
+    int data[10]
   end
 
   def scan() do
@@ -623,7 +623,7 @@ end`;
     const src = `
 defplugin "Test" do
   globals do
-    int[10] data = 0
+    int data[10]
   end
 
   def scan() do
@@ -1149,12 +1149,6 @@ end`;
 // ===========================================================================
 // Index assignment (setbyte) — end-to-end
 // ===========================================================================
-
-// TODO: The global array declaration syntax was changed from `int[10] data = 0` to `int data[10]`,
-// This reflects our decision to remove initialization (runtime zero-inits arrays) and unify the byte
-// array size after the name, not after the type. A further discussion point is if we should add a `byte`
-// type specifically for byte arrays, since we only support one type of array, but that requires mt-actions
-// runtime review.
 
 describe("index assignment (setbyte)", () => {
   it("compiles arr[i] = val to setbyte action", () => {

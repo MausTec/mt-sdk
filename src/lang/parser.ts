@@ -535,7 +535,16 @@ class Parser {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
-    // Optional array size before name: `int[4] name`
+    if (!this.check(TokenKind.Identifier)) {
+      this.diagnostics.push(langError("Expected identifier in globals declaration", this.peek().span));
+      this.skipToNextLine();
+
+      return null;
+    }
+
+    const nameToken = this.advance();
+
+    // Optional array size after name: `int name[4]`
     let arraySize: number | null = null;
 
     if (this.check(TokenKind.LBracket)) {
@@ -548,34 +557,8 @@ class Parser {
       }
     }
 
-    if (!this.check(TokenKind.Identifier)) {
-      this.diagnostics.push(langError("Expected identifier in globals declaration", this.peek().span));
-      this.skipToNextLine();
-
-      return null;
-    }
-
-    const nameToken = this.advance();
-
-    // Optional array size after name: `int name[4]`
-    if (arraySize === null && this.check(TokenKind.LBracket)) {
-      arraySize = this.parseArraySize();
-
-      if (varType !== "int") {
-        this.diagnostics.push(
-          langError("Only `int` arrays are supported", typeToken.span),
-        );
-      }
-    }
-
     // Arrays don't require (or allow) an initializer — the runtime zero-inits.
     if (arraySize !== null) {
-      // Skip optional `= value` for backward compatibility
-      if (this.check(TokenKind.Assign)) {
-        this.advance();
-        this.parseScalarValue(); // consume and discard
-      }
-
       return {
         kind: "GlobalDecl",
         span: mergeSpan(typeToken.span, nameToken.span),
@@ -1512,19 +1495,6 @@ class Parser {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
-    // Optional array size before name: `int[4] name`
-    let arraySize: number | null = null;
-
-    if (this.check(TokenKind.LBracket)) {
-      arraySize = this.parseArraySize();
-
-      if (varType !== "int") {
-        this.diagnostics.push(
-          langError("Only `int` arrays are supported", typeToken.span),
-        );
-      }
-    }
-
     if (!this.check(TokenKind.Identifier)) {
       this.diagnostics.push(
         langError("Expected name after type in local declaration", this.peek().span),
@@ -1536,7 +1506,9 @@ class Parser {
     const nameToken = this.advance();
 
     // Optional array size after name: `int name[4]`
-    if (arraySize === null && this.check(TokenKind.LBracket)) {
+    let arraySize: number | null = null;
+
+    if (this.check(TokenKind.LBracket)) {
       arraySize = this.parseArraySize();
 
       if (varType !== "int") {
