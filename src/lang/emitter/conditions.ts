@@ -144,6 +144,53 @@ function collectCombinator(
   return true;
 }
 
+// --- Condition inversion (for `unless`) ---------------------------------------
+
+const INVERSE_OP: Record<string, keyof MtpCondition> = {
+  eq: "neq",
+  neq: "eq",
+  lt: "gte",
+  gte: "lt",
+  gt: "lte",
+  lte: "gt",
+};
+
+/**
+ * Invert a condition predicate, producing the logical opposite.
+ *
+ * Used by `unless` to avoid the `{ none: [{ neq: ... }] }` double-negative.
+ * Applies comparison flips for simple predicates and De Morgan's law for
+ * combinators. Double negation (`none`) is eliminated.
+ */
+export function invertCondition(cond: MtpCondition): MtpCondition {
+  // Single comparison, so flip operator
+  for (const [op, inverse] of Object.entries(INVERSE_OP)) {
+    if (op in cond) {
+      return { [inverse]: (cond as Record<string, unknown>)[op] } as MtpCondition;
+    }
+  }
+
+  // De Morgan's: all -> any with inverted children
+  if (cond.all) {
+    return { any: cond.all.map(invertCondition) };
+  }
+
+  // De Morgan's: any -> all with inverted children
+  if (cond.any) {
+    return { all: cond.any.map(invertCondition) };
+  }
+
+  // Double negation elimination: none -> unwrap
+  if (cond.none) {
+    if (cond.none.length === 1) return cond.none[0]!;
+    // none: [X, Y] = NOT(X) AND NOT(Y) -> inverted = X OR Y
+    return { any: cond.none };
+  }
+
+  // Fallback (shouldn't be reachable with well-formed conditions)
+  return { none: [cond] };
+}
+
 // --- Bare truthy --------------------------------------------------------------
 
 function truthyCondition(
@@ -159,6 +206,6 @@ function truthyCondition(
   // Complex expression — pre-evaluate to a temp, then check neq 0
   const prereqs: MtpAction[] = [];
   const val = resolveArg(expr, ctx, prereqs, false);
-  
+
   return { prereqs, condition: { neq: [val, 0] } };
 }

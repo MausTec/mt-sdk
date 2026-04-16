@@ -2,7 +2,7 @@ import type { Stmt } from "../ast.js";
 import type { MtpAction, MtpActionObject, MtpConditional } from "../../core/mtp-types.js";
 import type { BlockEmitContext } from "./context.js";
 import { exprToValue, exprToActions } from "./expressions.js";
-import { exprToCondition } from "./conditions.js";
+import { exprToCondition, invertCondition } from "./conditions.js";
 import type { LocalDeclStmt, ReturnStmt, IfStmt, ConditionalStmt, Expr } from "../ast.js";
 
 /**
@@ -139,7 +139,7 @@ function emitConditional(stmt: ConditionalStmt, ctx: BlockEmitContext): MtpActio
 
   let predicate: MtpConditional;
   if (stmt.guard === "unless") {
-    predicate = { none: [result.condition], then: bodyActions };
+    predicate = { ...invertCondition(result.condition), then: bodyActions };
   } else {
     predicate = { ...result.condition, then: bodyActions };
   }

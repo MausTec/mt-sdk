@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { exprToCondition } from "./conditions.js";
+import { exprToCondition, invertCondition } from "./conditions.js";
 import type { ConditionResult } from "./conditions.js";
 import { BlockEmitContext } from "./context.js";
 import type { Span } from "../diagnostics.js";
@@ -302,5 +302,83 @@ describe("exprToCondition", () => {
       expect(result.prereqs).toEqual([{ "sub": [0, "$x"], "to": "$__t0" }]);
       expect(result.condition).toEqual({ neq: ["$__t0", 0] });
     });
+  });
+});
+
+// --- invertCondition ----------------------------------------------------------
+
+describe("invertCondition", () => {
+  it("eq -> neq", () => {
+    expect(invertCondition({ eq: ["$x", 0] })).toEqual({ neq: ["$x", 0] });
+  });
+
+  it("neq -> eq", () => {
+    expect(invertCondition({ neq: ["$x", 0] })).toEqual({ eq: ["$x", 0] });
+  });
+
+  it("lt -> gte", () => {
+    expect(invertCondition({ lt: ["$a", 10] })).toEqual({ gte: ["$a", 10] });
+  });
+
+  it("gte -> lt", () => {
+    expect(invertCondition({ gte: ["$a", 10] })).toEqual({ lt: ["$a", 10] });
+  });
+
+  it("gt -> lte", () => {
+    expect(invertCondition({ gt: ["$a", "$b"] })).toEqual({ lte: ["$a", "$b"] });
+  });
+
+  it("lte -> gt", () => {
+    expect(invertCondition({ lte: ["$a", "$b"] })).toEqual({ gt: ["$a", "$b"] });
+  });
+
+  it("all -> any with inverted children (De Morgan's)", () => {
+    expect(invertCondition({
+      all: [{ eq: ["$a", 1] }, { gt: ["$b", 0] }],
+    })).toEqual({
+      any: [{ neq: ["$a", 1] }, { lte: ["$b", 0] }],
+    });
+  });
+
+  it("any -> all with inverted children (De Morgan's)", () => {
+    expect(invertCondition({
+      any: [{ eq: ["$a", 1] }, { lt: ["$b", 5] }],
+    })).toEqual({
+      all: [{ neq: ["$a", 1] }, { gte: ["$b", 5] }],
+    });
+  });
+
+  it("none with single child -> double negation elimination", () => {
+    expect(invertCondition({ none: [{ eq: ["$x", 0] }] })).toEqual({ eq: ["$x", 0] });
+  });
+
+  it("none with multiple children -> any (unwrap negation)", () => {
+    expect(invertCondition({
+      none: [{ eq: ["$x", 0] }, { gt: ["$y", 1] }],
+    })).toEqual({
+      any: [{ eq: ["$x", 0] }, { gt: ["$y", 1] }],
+    });
+  });
+
+  it("nested: inverts all containing comparisons and combinators", () => {
+    // not (a == 1 and (b > 0 or c < 10))
+    // → any [neq a 1, all [lte b 0, gte c 10]]
+    expect(invertCondition({
+      all: [
+        { eq: ["$a", 1] },
+        { any: [{ gt: ["$b", 0] }, { lt: ["$c", 10] }] },
+      ],
+    })).toEqual({
+      any: [
+        { neq: ["$a", 1] },
+        { all: [{ lte: ["$b", 0] }, { gte: ["$c", 10] }] },
+      ],
+    });
+  });
+
+  it("bare truthy neq inverts to eq (the unless pattern)", () => {
+    // This is the exact case: unless @oscEnabled → truthy gives { neq: [val, 0] }
+    // invertCondition should produce { eq: [val, 0] }
+    expect(invertCondition({ neq: ["$__t0", 0] })).toEqual({ eq: ["$__t0", 0] });
   });
 });
