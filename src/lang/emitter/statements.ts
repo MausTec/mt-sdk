@@ -108,14 +108,14 @@ function emitReturn(stmt: ReturnStmt, ctx: BlockEmitContext): MtpAction[] {
 // Note that the conditional predicate should be "any", "all", "none" for "or", "and", and "not"
 
 function emitIf(stmt: IfStmt, ctx: BlockEmitContext): MtpAction[] {
-  const condition = exprToCondition(stmt.condition, ctx);
-  if (condition === null) {
+  const result = exprToCondition(stmt.condition, ctx);
+  if (result === null) {
     ctx.error("Could not compile if-condition", stmt.condition.span);
     return [];
   }
 
   const thenActions = emitStatements(stmt.then, ctx);
-  const conditional: MtpConditional = { ...condition, then: thenActions };
+  const conditional: MtpConditional = { ...result.condition, then: thenActions };
 
   if (stmt.else !== null && stmt.else.length > 0) {
     conditional.else = emitStatements(stmt.else, ctx);
@@ -123,14 +123,14 @@ function emitIf(stmt: IfStmt, ctx: BlockEmitContext): MtpAction[] {
 
   const obj = Object.create(null) as MtpActionObject;
   obj.if = conditional;
-  return [obj];
+  return [...result.prereqs, obj];
 }
 
 // --- Conditional (postfix `stmt if cond` / `stmt unless cond`) ----------------
 
 function emitConditional(stmt: ConditionalStmt, ctx: BlockEmitContext): MtpAction[] {
-  const condition = exprToCondition(stmt.condition, ctx);
-  if (condition === null) {
+  const result = exprToCondition(stmt.condition, ctx);
+  if (result === null) {
     ctx.error("Could not compile conditional guard", stmt.condition.span);
     return [];
   }
@@ -139,12 +139,12 @@ function emitConditional(stmt: ConditionalStmt, ctx: BlockEmitContext): MtpActio
 
   let predicate: MtpConditional;
   if (stmt.guard === "unless") {
-    predicate = { none: [condition], then: bodyActions };
+    predicate = { none: [result.condition], then: bodyActions };
   } else {
-    predicate = { ...condition, then: bodyActions };
+    predicate = { ...result.condition, then: bodyActions };
   }
 
   const obj = Object.create(null) as MtpActionObject;
   obj.if = predicate;
-  return [obj];
+  return [...result.prereqs, obj];
 }

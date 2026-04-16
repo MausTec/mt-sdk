@@ -221,9 +221,10 @@ function emitCall(
 ): MtpAction[] {
   const isLocal = ctx.localFunctions.has(expr.name);
 
+  // TODO: Evaluate if arg validation belongs in the parser or in a semantic analysis pass
   if (isLocal && expr.args.length > ctx.localFunctions.get(expr.name)!.length) {
     const expected = ctx.localFunctions.get(expr.name)!.length;
-    
+
     ctx.error(
       `Function "${expr.name}" expects ${expected} argument(s), got ${expr.args.length}`,
       expr.span,

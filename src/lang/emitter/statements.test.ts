@@ -300,8 +300,8 @@ describe("emitStatements", () => {
 
   // --- If / Conditional (stub — depends on condition emitter) ---
 
-  describe("If (condition emitter dependency)", () => {
-    it("emits error diagnostic when condition emitter returns null", () => {
+  describe("If", () => {
+    it("emits if with simple comparison condition", () => {
       const ctx = new BlockEmitContext();
       const stmts: Stmt[] = [{
         kind: "If",
@@ -311,16 +311,15 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       const actions = emitStatements(stmts, ctx);
-      // Condition emitter is not yet implemented, so it returns null → error diagnostic
-      expect(actions).toEqual([]);
-      expect(ctx.diagnostics).toContainEqual(
-        expect.objectContaining({ level: "error", message: expect.stringContaining("if-condition") }),
-      );
+      expect(actions).toEqual([{
+        if: { eq: [1, 1], then: [{ return: 0 }] },
+      }]);
+      expect(ctx.diagnostics).toEqual([]);
     });
   });
 
   describe("Conditional (postfix guard)", () => {
-    it("emits error diagnostic when condition emitter returns null", () => {
+    it("emits postfix if with simple comparison", () => {
       const ctx = new BlockEmitContext();
       const stmts: Stmt[] = [{
         kind: "Conditional",
@@ -330,10 +329,10 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       const actions = emitStatements(stmts, ctx);
-      expect(actions).toEqual([]);
-      expect(ctx.diagnostics).toContainEqual(
-        expect.objectContaining({ level: "error", message: expect.stringContaining("conditional guard") }),
-      );
+      expect(actions).toEqual([{
+        if: { gt: [1, 0], then: [{ return: 1 }] },
+      }]);
+      expect(ctx.diagnostics).toEqual([]);
     });
   });
 });
