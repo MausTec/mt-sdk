@@ -295,9 +295,11 @@ class Lexer {
 
       case "@": {
         this.advance(); // consume `@`
-        let configName = "";
-        while (isIdentCont(this.peek())) configName += this.advance();
-        this.push(TokenKind.ConfigRef, configName, start);
+        let attrName = "";
+
+        while (isIdentCont(this.peek())) attrName += this.advance();
+
+        this.push(TokenKind.ModuleAttr, attrName, start);
         return true;
       }
 
@@ -429,7 +431,7 @@ class Lexer {
       case "^": kind = TokenKind.BinaryXor; break;
       case "~": kind = TokenKind.BinaryNot; break;
 
-      // --- Range operator -------------------------------------------------------
+      // --- Range and dot-accessor operators ------------------------------------
       case ".": {
         if (this.peek(1) === ".") {
           this.advance();
@@ -437,7 +439,8 @@ class Lexer {
           this.push(TokenKind.DotDot, "..", start);
           return true;
         }
-        return false;
+        
+        kind = TokenKind.Dot; break;
       }
     }
 

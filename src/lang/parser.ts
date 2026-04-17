@@ -38,6 +38,7 @@ import type {
   AccumulatorExpr, 
   ErrorCodeExpr, 
   ConfigRefExpr, 
+  MetaRefExpr,
   CallExpr, 
   BinaryExpr, 
   UnaryExpr, 
@@ -63,7 +64,7 @@ function emptyPlugin(span: Span): PluginNode {
   return {
     kind: "Plugin",
     span,
-    displayName: null,
+    moduleName: null,
     metadata: [],
     matchBlock: null,
     configBlock: null,
@@ -129,6 +130,8 @@ function canStartExpr(t: Token): boolean {
     case TokenKind.Accumulator:
     case TokenKind.ErrorCode:
     case TokenKind.ConfigRef:
+    case TokenKind.ModuleAttr:
+    case TokenKind.Config:
     case TokenKind.Identifier:
     case TokenKind.LParen:
     case TokenKind.Minus:
@@ -204,7 +207,7 @@ class Parser {
 
   /**
    * Consume `do` and enforce that the remainder of the line contains only
-   * whitespace or comments — no code is allowed after `do`.
+   * whitespace or comments - no code is allowed after `do`.
    */
   private expectDoAndNewline(context: string): Token {
     const doToken = this.expect(TokenKind.Do, context);
@@ -256,23 +259,27 @@ class Parser {
   private parsePlugin(): PluginNode {
     const defToken = this.advance(); // consume `defplugin`
 
-    let displayName: string | null = null;
-    if (this.check(TokenKind.StringLit)) {
-      displayName = this.advance().value;
+    let moduleName: string | null = null;
+
+    if (this.check(TokenKind.Identifier)) {
+      moduleName = this.advance().value;
+    } else if (this.check(TokenKind.StringLit)) {
+      // Legacy string syntax - accept but don't error
+      moduleName = this.advance().value;
     } else {
       this.diagnostics.push(
-        langError("Expected display name string after `defplugin`", this.peek().span),
+        langError("Expected module name after `defplugin`", this.peek().span),
       );
     }
 
-    this.expectDoAndNewline("after defplugin display name");
+    this.expectDoAndNewline("after defplugin module name");
 
     const metadata: MetadataFieldNode[] = [];
 
     const result: PluginNode = {
       kind: "Plugin",
       span: defToken.span, // updated at end
-      displayName,
+      moduleName,
       metadata,
       matchBlock: null,
       configBlock: null,
@@ -325,7 +332,14 @@ class Parser {
         continue;
       }
 
-      // Metadata field: identifier value
+      // Metadata field: @key value
+      if (this.check(TokenKind.ModuleAttr)) {
+        const field = this.parseMetadataField();
+        if (field) metadata.push(field);
+        continue;
+      }
+
+      // Legacy metadata field: bareword key value
       if (this.check(TokenKind.Identifier)) {
         const field = this.parseMetadataField();
         if (field) metadata.push(field);
@@ -477,7 +491,7 @@ class Parser {
 
   // --- Event handlers ---------------------------------------------------------
 
-  /** Parse `on :event do ... end` — event handler. `event` is the atom name without `:`. */
+  /** Parse `on :event do ... end` as an event handler. `event` is the atom name without `:`. */
   private parseOnNode(): OnNode | null {
     const kwToken = this.advance(); // consume `on`
 
@@ -560,7 +574,7 @@ class Parser {
       }
     }
 
-    // Arrays don't require (or allow) an initializer — the runtime zero-inits.
+    // Arrays don't require (or allow) an initializer - the runtime zero-inits.
     if (arraySize !== null) {
       return {
         kind: "GlobalDecl",
@@ -1003,9 +1017,76 @@ class Parser {
       return { kind: "ConfigRef", name: t.value, span: t.span } satisfies ConfigRefExpr;
     }
 
+    // Module-level attribute reference used in expression context error
+    if (t.kind === TokenKind.ModuleAttr) {
+      this.advance();
+      this.diagnostics.push(
+        langError(
+          `Cannot use @${t.value} in an expression. Use config.${t.value} to read config or meta.${t.value} for metadata`,
+          t.span,
+        ),
+      );
+
+      return { kind: "Literal", varType: "int", value: 0, span: t.span } satisfies LiteralExpr;
+    }
+
+    // Dot-accessor: config.name (Config keyword followed by Dot)
+    if (t.kind === TokenKind.Config && this.peekAhead(1).kind === TokenKind.Dot) {
+      this.advance(); // consume `config`
+      this.advance(); // consume `.`
+      const nameToken = this.peek();
+
+      if (nameToken.kind !== TokenKind.Identifier) {
+        this.diagnostics.push(
+          langError("Expected field name after `config.`", nameToken.span),
+        );
+
+        return { kind: "Literal", varType: "int", value: 0, span: t.span } satisfies LiteralExpr;
+      }
+
+      this.advance(); // consume field name
+      const span = mergeSpan(t.span, nameToken.span);
+
+      return { 
+        kind: "ConfigRef", 
+        name: nameToken.value, 
+        span 
+      } satisfies ConfigRefExpr;
+    }
+
     // Named call or bare identifier
     if (t.kind === TokenKind.Identifier) {
       this.advance();
+
+      // Dot-accessor: meta.name or any other (non-config) identifier.
+      // TODO: config is a special keyword but everything else is just a identifier, evaluate
+      // if we should make config and match also plain idents or keep them special.
+      if (this.check(TokenKind.Dot) && t.value === "meta") {
+        this.advance(); // consume `.`
+        const nameToken = this.peek();
+
+        if (nameToken.kind !== TokenKind.Identifier) {
+          this.diagnostics.push(
+            langError("Expected field name after `meta.`", nameToken.span),
+          );
+
+          return { 
+            kind: "Literal", 
+            varType: "int", 
+            value: 0, 
+            span: t.span 
+          } satisfies LiteralExpr;
+        }
+
+        this.advance(); // consume field name
+        const span = mergeSpan(t.span, nameToken.span);
+
+        return { 
+          kind: "MetaRef", 
+          name: nameToken.value, 
+          span 
+        } satisfies MetaRefExpr;
+      }
 
       if (this.check(TokenKind.LParen)) {
         const args = this.parseCallArgs();
@@ -1030,7 +1111,7 @@ class Parser {
     return null;
   }
 
-  /** Parse `(expr, expr, ...)` — the argument list of a call expression. */
+  /** Parse `(expr, expr, ...)` as the argument list of a call expression. */
   private parseCallArgs(): Expr[] {
     this.advance(); // consume `(`
     const args: Expr[] = [];
@@ -1138,7 +1219,7 @@ class Parser {
         );
       }
 
-      // Declarations cannot have postfix guards — error and recover
+      // Declarations cannot have postfix guards, emit as error and recover
       if (this.check(TokenKind.If) || this.check(TokenKind.Unless)) {
         this.diagnostics.push(
           langError("Declaration cannot have a trailing condition, use a conditional assignment instead", this.peek().span),
@@ -1212,6 +1293,52 @@ class Parser {
     const t = this.peek();
     const ahead = this.peekAhead(1);
 
+    // config.name = expr  (config assign - always an error, config is read-only)
+    if (t.kind === TokenKind.Config && ahead.kind === TokenKind.Dot) {
+      const ahead2 = this.peekAhead(2);
+      const ahead3 = this.peekAhead(3);
+
+      if (ahead2.kind === TokenKind.Identifier && ahead3.kind === TokenKind.Assign) {
+        const configTok = this.advance(); // config
+        this.advance();                   // .
+        const fieldTok = this.advance();  // name
+        this.advance();                   // =
+        this.parseExpr();                 // consume value for recovery
+
+        this.diagnostics.push(
+          langError(
+            `Cannot assign to \`config.${fieldTok.value}\`: config fields are read-only`,
+            configTok.span,
+          ),
+        );
+
+        return null;
+      }
+    }
+
+    // meta.name = expr  (meta assign - always an error, meta is read-only)
+    if (t.kind === TokenKind.Identifier && t.value === "meta" && ahead.kind === TokenKind.Dot) {
+      const ahead2 = this.peekAhead(2);
+      const ahead3 = this.peekAhead(3);
+
+      if (ahead2.kind === TokenKind.Identifier && ahead3.kind === TokenKind.Assign) {
+        const metaTok = this.advance(); // meta
+        this.advance();                 // .
+        const fieldTok = this.advance(); // name
+        this.advance();                 // =
+        this.parseExpr();               // consume value for recovery
+
+        this.diagnostics.push(
+          langError(
+            `Cannot assign to \`meta.${fieldTok.value}\` - meta fields are read-only`,
+            metaTok.span,
+          ),
+        );
+
+        return null;
+      }
+    }
+
     // Compound assignment: `$name += expr`, `name -= expr`, etc.
     if ((t.kind === TokenKind.GlobalVar || t.kind === TokenKind.Identifier) && isCompoundAssign(ahead.kind)) {
       const nameTok = this.advance();
@@ -1256,16 +1383,17 @@ class Parser {
       } satisfies AssignGlobalStmt;
     }
 
-    // @name = expr  (config assign — always an error, config is read-only)
-    if (t.kind === TokenKind.ConfigRef && ahead.kind === TokenKind.Assign) {
+    // @name = expr  (module attr assign in expression context - always an error)
+    if (t.kind === TokenKind.ModuleAttr && ahead.kind === TokenKind.Assign) {
       const nameTok = this.advance(); // @name
       this.advance();                 // =
       // Still parse the value expression to keep the parser in a good state
       this.parseExpr();
 
       this.diagnostics.push(
-        langError(`Cannot assign to config variable \`@${nameTok.value}\`, you must explicitly call \`setConfig("${nameTok.value}", value)\``, nameTok.span),
+        langError(`Cannot assign to \`@${nameTok.value}\` here. Module attributes can only be set inside \`defplugin\` metadata`, nameTok.span),
       );
+      
       return null;
     }
 
@@ -1535,7 +1663,7 @@ class Parser {
   private parseReturnStmt(): ReturnStmt {
     const retToken = this.advance(); // `return`
 
-    // Only parse a value expression when the next token can start one —
+    // Only parse a value expression when the next token can start one -
     // distinguishes `return if cond` (postfix guard, no value) from `return expr`.
     let value: Expr | null = null;
     const next = this.peek();

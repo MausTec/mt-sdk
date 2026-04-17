@@ -351,17 +351,35 @@ function visitExpr(
   expr: Expr,
 ): void {
   switch (expr.kind) {
-    case "ConfigRef":
-      // `@name` - readonly variable
+    case "ConfigRef": {
+      // `config.name` - highlight the field portion as a readonly variable.
+      const fieldCol = expr.span.col + "config.".length;
+
       push(
         builder,
-        expr.span,
-        // +1 for the `@` sigil
-        expr.name.length + 1,
+        { ...expr.span, col: fieldCol, endCol: fieldCol + expr.name.length },
+        expr.name.length,
         typeIndex(SemanticTokenTypes.variable),
         modBits(SemanticTokenModifiers.readonly),
       );
+
       break;
+    }
+
+    case "MetaRef": {
+      // `meta.name` - same treatment as ConfigRef
+      const metaFieldCol = expr.span.col + "meta.".length;
+
+      push(
+        builder,
+        { ...expr.span, col: metaFieldCol, endCol: metaFieldCol + expr.name.length },
+        expr.name.length,
+        typeIndex(SemanticTokenTypes.variable),
+        modBits(SemanticTokenModifiers.readonly),
+      );
+      
+      break;
+    }
 
     case "GlobalVar":
       // `$name` - variable

@@ -16,6 +16,7 @@ export type Expr =
   | AccumulatorExpr
   | ErrorCodeExpr
   | ConfigRefExpr
+  | MetaRefExpr
   | IdentifierExpr
   | IndexExpr
   | BinaryExpr
@@ -29,29 +30,35 @@ export interface LiteralExpr extends BaseNode {
   value: number | boolean | string;
 }
 
-/** `$name` — read or assign a plugin global. */
+/** `$name` - read or assign a plugin global. */
 export interface GlobalVarExpr extends BaseNode {
   kind: "GlobalVar";
   name: string;
 }
 
-/** `$_` — pipe accumulator (implicit result of the preceding step). */
+/** `$_` - pipe accumulator (implicit result of the preceding step). */
 export interface AccumulatorExpr extends BaseNode {
   kind: "Accumulator";
 }
 
-/** `$!` — error code set by builtins on failure. */
+/** `$!` - error code set by builtins on failure. */
 export interface ErrorCodeExpr extends BaseNode {
   kind: "ErrorCode";
 }
 
-/** `@name` — read-only config reference. */
+/** `config.name` - read-only config reference. */
 export interface ConfigRefExpr extends BaseNode {
   kind: "ConfigRef";
   name: string;
 }
 
-/** Bare identifier — local variable read, or function call target. */
+/** `meta.name` - read-only metadata reference (stub, not yet emittable). */
+export interface MetaRefExpr extends BaseNode {
+  kind: "MetaRef";
+  name: string;
+}
+
+/** Bare identifier - local variable read, or function call target. */
 export interface IdentifierExpr extends BaseNode {
   kind: "Identifier";
   name: string;
@@ -128,7 +135,7 @@ export type Stmt =
   | ReturnStmt
   | ConditionalStmt;
 
-/** `type name` or `type name = expr` — local variable declaration. */
+/** `type name` or `type name = expr` - local variable declaration. */
 export interface LocalDeclStmt extends BaseNode {
   kind: "LocalDecl";
   docs: string[];
@@ -142,7 +149,7 @@ export interface LocalDeclStmt extends BaseNode {
   init: Expr | null;
 }
 
-/** `name = expr` — assign to a declared local. */
+/** `name = expr` - assign to a declared local. */
 export interface AssignLocalStmt extends BaseNode {
   kind: "AssignLocal";
   name: string;
@@ -150,7 +157,7 @@ export interface AssignLocalStmt extends BaseNode {
   value: Expr;
 }
 
-/** `$name = expr` — assign to a plugin global. */
+/** `$name = expr` - assign to a plugin global. */
 export interface AssignGlobalStmt extends BaseNode {
   kind: "AssignGlobal";
   name: string;
@@ -158,7 +165,7 @@ export interface AssignGlobalStmt extends BaseNode {
   value: Expr;
 }
 
-/** `target[index] = value` — index assignment (setbyte). */
+/** `target[index] = value` - index assignment (setbyte). */
 export interface AssignIndexStmt extends BaseNode {
   kind: "AssignIndex";
   target: Expr;
@@ -296,7 +303,7 @@ export interface MetadataFieldNode extends BaseNode {
   value: Expr | Expr[];
 }
 
-/** `fn name = (type arg) -> expr` — pure single-expression function. */
+/** `fn name = (type arg) -> expr` - pure single-expression function. */
 export interface FnNode extends BaseNode {
   kind: "Fn";
   name: string;
@@ -314,7 +321,7 @@ export interface DefParam {
   span: Span;
 }
 
-/** `def name(type arg, ...) do ... end` — effectful multi-statement function. */
+/** `def name(type arg, ...) do ... end` - effectful multi-statement function. */
 export interface DefNode extends BaseNode {
   kind: "Def";
   docs: string[];
@@ -325,7 +332,7 @@ export interface DefNode extends BaseNode {
   body: Stmt[];
 }
 
-/** `on :event do ... end` — event handler. `event` is the atom name without `:`. */
+/** `on :event do ... end` - event handler. `event` is the atom name without `:`. */
 export interface OnNode extends BaseNode {
   kind: "On";
   event: string;
@@ -337,7 +344,7 @@ export interface OnNode extends BaseNode {
 /** Root AST node produced by parsing a single `.mtp` file. */
 export interface PluginNode extends BaseNode {
   kind: "Plugin";
-  displayName: string | null;
+  moduleName: string | null;
   metadata: MetadataFieldNode[];
   matchBlock: MatchBlockNode | null;
   configBlock: ConfigBlockNode | null;

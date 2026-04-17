@@ -275,7 +275,7 @@ function visitExpr(node: Expr, line: number, col: number, path: ASTPath): boolea
       }
       break;
 
-    // Leaf nodes: Literal, GlobalVar, Accumulator, ErrorCode, ConfigRef, Identifier
+    // Leaf nodes: Literal, GlobalVar, Accumulator, ErrorCode, ConfigRef, MetaRef, Identifier
     default:
       break;
   }

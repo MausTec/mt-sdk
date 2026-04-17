@@ -282,11 +282,18 @@ function validateExpr(
       if (resolved === undefined) {
         diags.push({
           level: "error",
-          message: `Unknown config variable \`@${expr.name}\``,
+          message: `Unknown config variable \`config.${expr.name}\``,
           span: expr.span,
         });
       }
 
+      break;
+    }
+
+    case "MetaRef": {
+      // MetaRef is syntactically valid but not yet supported at runtime.
+      // The emitter will produce a diagnostic, so no validation error here,
+      // but we could warn. For now, accept silently.
       break;
     }
 

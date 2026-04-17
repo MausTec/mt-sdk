@@ -138,6 +138,10 @@ export function exprToActions(
     case "ConfigRef":
       return [withTarget(actionObj("getPluginConfig", expr.name), target)];
 
+    case "MetaRef":
+      ctx.error(`Plugin metadata introspection (\`meta.${expr.name}\`) is not yet supported by the runtime`, expr.span);
+      return [];
+
     case "Unary": {
       if (expr.op === "-") {
         const prereqs: MtpAction[] = [];

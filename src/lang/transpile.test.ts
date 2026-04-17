@@ -33,7 +33,7 @@ function parseErrors(source: string): string[] {
   return errors(parseSource(source).diagnostics);
 }
 
-// --- Phase 1 — Parser hardening ---------------------------------------------
+// --- Phase 1 - Parser hardening ---------------------------------------------
 
 describe("Phase 1: enforce newline after `do`", () => {
   it("rejects code on the same line as `do` in a def block", () => {
@@ -156,7 +156,7 @@ defplugin "Test" do
 end`;
     const plugin = transpileOk(src);
     // The AST carries the label; the emitter propagates it into the JSON.
-    // For now, just confirm it parses cleanly — label propagation is an emitter concern.
+    // For now, just confirm it parses cleanly - label propagation is an emitter concern.
     expect(plugin.variables).toHaveProperty("counter", 0);
   });
 
@@ -246,7 +246,7 @@ end`;
 });
 
 // ===========================================================================
-// Baseline — ensure existing features don't regress
+// Baseline - ensure existing features don't regress
 // ===========================================================================
 
 describe("baseline: minimal valid plugin", () => {
@@ -255,6 +255,7 @@ describe("baseline: minimal valid plugin", () => {
 defplugin "Minimal" do
 end`;
     const plugin = transpileOk(src);
+    expect(plugin.name).toBe("minimal");
     expect(plugin.display_name).toBe("Minimal");
   });
 
@@ -280,6 +281,7 @@ defplugin "Full" do
   end
 end`;
     const plugin = transpileOk(src);
+    expect(plugin.name).toBe("full");
     expect(plugin.display_name).toBe("Full");
     expect(plugin.variables).toEqual({ counter: 0, name: "test" });
     expect(plugin.config).toHaveProperty("speed");
@@ -464,7 +466,7 @@ end`;
   });
 });
 
-// --- Phase 2 — Local arrays & index expressions -----------------------------
+// --- Phase 2 - Local arrays & index expressions -----------------------------
 
 describe("Phase 2: local array declarations", () => {
   it("parses a local int array declaration", () => {
@@ -542,7 +544,7 @@ end`;
     expect(def.vars).toContain("tape[100]");
     expect(def.vars).toContain("x");
     expect(def.actions).toContainEqual({ set: { $x: 5 } });
-    // No init action for tape — runtime zero-initializes arrays
+    // No init action for tape - runtime zero-initializes arrays
     expect(def.actions?.some((a) =>
       typeof a === "object" && a !== null && "set" in a &&
       typeof (a as Record<string, unknown>).set === "object" &&
@@ -641,7 +643,7 @@ end`;
 });
 
 // ===========================================================================
-// Phase 3 — Type safety & symbol validation
+// Phase 3 - Type safety & symbol validation
 // ===========================================================================
 
 // --- 3.1: readonly field on ResolvedVariable --------------------------------
@@ -708,7 +710,22 @@ end`;
 // --- 3.2: Config assignment diagnostic --------------------------------------
 
 describe("Phase 3.2: config assignment diagnostic", () => {
-  it("errors when assigning to a config ref with @", () => {
+  it("errors when assigning to a config ref with config.name", () => {
+    const src = `
+defplugin "Test" do
+  config do
+    int speed = 50
+  end
+
+  def myFunc() do
+    config.speed = 100
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("read-only") || e.includes("Cannot assign"))).toBe(true);
+  });
+
+  it("errors when using @ module attr in expression context", () => {
     const src = `
 defplugin "Test" do
   config do
@@ -720,7 +737,7 @@ defplugin "Test" do
   end
 end`;
     const errs = transpileErrors(src);
-    expect(errs.some((e) => e.includes("read-only") || e.includes("Cannot assign"))).toBe(true);
+    expect(errs.some((e) => e.includes("Cannot use @speed") || e.includes("Module attributes"))).toBe(true);
   });
 });
 
@@ -1066,7 +1083,7 @@ end`;
 });
 
 // ===========================================================================
-// Phase 4 — Match block parsing & emission
+// Phase 4 - Match block parsing & emission
 // ===========================================================================
 
 describe("Phase 4: match block parsing", () => {
@@ -1147,7 +1164,7 @@ end`;
 });
 
 // ===========================================================================
-// Index assignment (setbyte) — end-to-end
+// Index assignment (setbyte) - end-to-end
 // ===========================================================================
 
 describe("index assignment (setbyte)", () => {
@@ -1210,7 +1227,7 @@ end`;
 });
 
 // ===========================================================================
-// While loop — end-to-end
+// While loop - end-to-end
 // ===========================================================================
 
 describe("while loop", () => {
@@ -1252,7 +1269,7 @@ end`;
 });
 
 // ===========================================================================
-// Compound assignment — end-to-end
+// Compound assignment - end-to-end
 // ===========================================================================
 
 describe("compound assignment", () => {
@@ -1308,7 +1325,7 @@ end`;
 });
 
 // ===========================================================================
-// Postfix while/until — end-to-end
+// Postfix while/until - end-to-end
 // ===========================================================================
 
 describe("postfix while/until", () => {
@@ -1346,7 +1363,7 @@ end`;
 });
 
 // ===========================================================================
-// While loop — end-to-end
+// While loop - end-to-end
 // ===========================================================================
 
 describe("while loop", () => {
@@ -1388,7 +1405,7 @@ end`;
 });
 
 // ===========================================================================
-// Compound assignment — end-to-end
+// Compound assignment - end-to-end
 // ===========================================================================
 
 describe("compound assignment", () => {
@@ -1444,7 +1461,7 @@ end`;
 });
 
 // ===========================================================================
-// Postfix while/until — end-to-end
+// Postfix while/until - end-to-end
 // ===========================================================================
 
 describe("postfix while/until", () => {
@@ -1601,5 +1618,148 @@ defplugin "Test" do
 end`;
     const errs = transpileErrors(src);
     expect(errs.some(e => e.includes("Cannot iterate"))).toBe(true);
+  });
+});
+
+// --- Phase B: config.name / meta.name / @attr metadata / PascalCase defplugin -
+
+describe("Phase B: config.name accessor", () => {
+  it("parses config.name and emits getPluginConfig action", () => {
+    const src = `
+defplugin "Test" do
+  config do
+    int maxLevel = 100
+  end
+
+  def ramp() do
+    setLevel config.maxLevel
+  end
+end`;
+    const plugin = transpileOk(src);
+    const ramp = (plugin as any).functions.ramp;
+    expect(ramp.actions).toEqual([
+      { getPluginConfig: "maxLevel" },
+      { setLevel: "$_" },
+    ]);
+  });
+
+  it("errors on config.name = expr (read-only)", () => {
+    const src = `
+defplugin "Test" do
+  config do
+    int speed = 50
+  end
+
+  def test() do
+    config.speed = 100
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("read-only") || e.includes("Cannot assign"))).toBe(true);
+  });
+});
+
+describe("Phase B: meta.name accessor", () => {
+  it("parses meta.name but errors in emitter (not yet supported)", () => {
+    const src = `
+defplugin "Test" do
+  def ramp() do
+    setLevel meta.version
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("meta") && e.includes("not yet supported"))).toBe(true);
+  });
+
+  it("errors on meta.name = expr (read-only)", () => {
+    const src = `
+defplugin "Test" do
+  def test() do
+    meta.version = "2.0"
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("read-only") || e.includes("Cannot assign"))).toBe(true);
+  });
+});
+
+describe("Phase B: PascalCase defplugin module name", () => {
+  it("accepts PascalCase identifier as module name", () => {
+    const src = `
+defplugin LovenseMax do
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toHaveLength(0);
+  });
+
+  it("still accepts string display name for backward compat", () => {
+    const src = `
+defplugin "Lovense Max" do
+end`;
+    const errs = parseErrors(src);
+    expect(errs).toHaveLength(0);
+  });
+
+  it("derives name slug from PascalCase module name", () => {
+    const src = `
+defplugin LovenseMax do
+end`;
+    const plugin = transpileOk(src);
+    expect(plugin.name).toBe("lovense-max");
+    expect(plugin.display_name).toBe("LovenseMax");
+  });
+
+  it("uses @display_name metadata over module name fallback", () => {
+    const src = `
+defplugin LovenseMax do
+  @display_name "Lovense Max Driver"
+end`;
+    const plugin = transpileOk(src);
+    expect(plugin.name).toBe("lovense-max");
+    expect(plugin.display_name).toBe("Lovense Max Driver");
+  });
+});
+
+describe("Phase B: @key value metadata syntax", () => {
+  it("parses @key value metadata inside defplugin", () => {
+    const src = `
+defplugin Test do
+  @version "1.0.0"
+  @author "Test Author"
+end`;
+    const plugin = transpileOk(src);
+    expect(plugin.version).toBe("1.0.0");
+    expect(plugin.author).toBe("Test Author");
+  });
+
+  it("still accepts bareword metadata for backward compat", () => {
+    const src = `
+defplugin "Test" do
+  version "1.0.0"
+  author "Test Author"
+end`;
+    const plugin = transpileOk(src);
+    expect(plugin.version).toBe("1.0.0");
+    expect(plugin.author).toBe("Test Author");
+  });
+
+  it("parses @platforms with bracket list", () => {
+    const src = `
+defplugin Test do
+  @platforms ["@eom", "@m1k"]
+end`;
+    const plugin = transpileOk(src);
+    expect(plugin.platforms).toEqual(["@eom", "@m1k"]);
+  });
+
+  it("errors when using @ module attr in expression context", () => {
+    const src = `
+defplugin Test do
+  def test() do
+    $x = @speed
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("Cannot use @speed"))).toBe(true);
   });
 });

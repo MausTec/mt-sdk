@@ -3,8 +3,8 @@ import { allSkus as runtimeAllSkus, getProductCatalog } from "@maustec/mt-runtim
 /**
  * Maps @family shorthand aliases to their mt-runtimes product key.
  * The product key is what mt-runtimes uses internally in catalog.json.
- * TODO: Migrate this to mt-runtimes so that the SDK no longer maintains a
- * separate mapping of @family aliases to product keys.
+ * FUTURE (Phase H): Migrate to mt-runtimes so the SDK no longer
+ * maintains a separate mapping of @family aliases to product keys.
  */
 const FAMILY_ALIASES: Readonly<Record<string, string>> = {
   "@eom": "edge-o-matic",

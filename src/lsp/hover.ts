@@ -103,11 +103,18 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
       const resolved = symbols.resolveConfig(node.name);
 
       if (resolved === undefined) {
-        return mkHover(`\`\`\`mtp\n(config) @${node.name}\n\`\`\`\n\n*Unresolved config variable*`, node.span);
+        return mkHover(`\`\`\`mtp\n(config) config.${node.name}\n\`\`\`\n\n*Unresolved config variable*`, node.span);
       }
 
       return mkHover(
-        `\`\`\`mtp\n(config) ${resolved.varType} @${resolved.name}\n\`\`\`` + formatDocs(resolved.docs),
+        `\`\`\`mtp\n(config) ${resolved.varType} config.${resolved.name}\n\`\`\`` + formatDocs(resolved.docs),
+        node.span,
+      );
+    }
+
+    case "MetaRef": {
+      return mkHover(
+        `\`\`\`mtp\n(meta) meta.${node.name}\n\`\`\`\n\n*Plugin metadata (read-only, not yet supported at runtime)*`,
         node.span,
       );
     }

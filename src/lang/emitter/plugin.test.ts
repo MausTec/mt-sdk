@@ -30,7 +30,7 @@ function emptyPlugin(overrides: Partial<PluginNode> = {}): PluginNode {
   return {
     kind: "Plugin",
     span: SPAN,
-    displayName: "Test Plugin",
+    moduleName: "Test Plugin",
     metadata: [],
     matchBlock: null,
     configBlock: null,
@@ -45,17 +45,27 @@ function emptyPlugin(overrides: Partial<PluginNode> = {}): PluginNode {
 // --- PluginEmitter.emit (top-level) ------------------------------------------
 
 describe("PluginEmitter.emit", () => {
-  it("emits displayName", () => {
-    const { plugin } = new PluginEmitter().emit(emptyPlugin());
-    expect(plugin.display_name).toBe("Test Plugin");
+  it("derives name slug from moduleName", () => {
+    const { plugin } = new PluginEmitter().emit(emptyPlugin({ moduleName: "TestPlugin" }));
+    expect(plugin.name).toBe("test-plugin");
+    expect(plugin.display_name).toBe("TestPlugin");
   });
 
-  it("reports error when displayName is missing", () => {
+  it("uses @display_name metadata when provided", () => {
+    const metadata: MetadataFieldNode[] = [
+      { kind: "MetadataField", key: "display_name", value: lit("My Cool Plugin"), span: SPAN },
+    ];
+    const { plugin } = new PluginEmitter().emit(emptyPlugin({ moduleName: "TestPlugin", metadata }));
+    expect(plugin.name).toBe("test-plugin");
+    expect(plugin.display_name).toBe("My Cool Plugin");
+  });
+
+  it("reports error when moduleName is missing", () => {
     const { diagnostics } = new PluginEmitter().emit(
-      emptyPlugin({ displayName: null }),
+      emptyPlugin({ moduleName: null }),
     );
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ level: "error", message: expect.stringContaining("display name") }),
+      expect.objectContaining({ level: "error", message: expect.stringContaining("module name") }),
     );
   });
 

@@ -72,6 +72,7 @@ export enum TokenKind {
   BinaryXor = "^",
   BinaryNot = "~",
   DotDot = "..",
+  Dot = ".",
 
   // --- Punctuation -----------------------------------------------------------
   LParen = "(",
@@ -86,8 +87,9 @@ export enum TokenKind {
   GlobalVar = "global_var",    // $name
   Accumulator = "accumulator", // $_ (special global)
   ErrorCode = "error_code",    // $! (special global)
-  ConfigRef = "config_ref",    // @name
+  ConfigRef = "config_ref",    // config.name (dot-accessor on `config` keyword)
   Atom = "atom",               // :name (`:` immediately followed by identifier)
+  ModuleAttr = "module_attr",  // @name (module-level metadata attribute)
 
   // --- Literals --------------------------------------------------------------
   Integer = "integer",

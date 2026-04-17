@@ -43,15 +43,16 @@ export interface FieldDef {
  * Keys are the source-language identifiers.
  */
 export const METADATA_FIELDS: Readonly<Record<string, FieldDef>> = {
-  version:     {},
-  sdk_version: {},
-  description: {},
-  author:      {},
-  license:     {},
-  repository:  {},
-  type:        {},
-  platforms:   { array: true },
-  permissions: { array: true },
+  version:      {},
+  sdk_version:  {},
+  display_name: {},
+  description:  {},
+  author:       {},
+  license:      {},
+  repository:   {},
+  type:         {},
+  platforms:    { array: true },
+  permissions:  { array: true },
 };
 
 /**
@@ -78,6 +79,18 @@ export const CONFIG_CONSTRAINT_KEYS: ReadonlyArray<ConfigConstraintKey> = [
 // --- Plugin emitter -----------------------------------------------------------
 
 /**
+ * Derive a hyphenated slug from a PascalCase module name.
+ * `LovenseMaxDriver` -> `lovense-max-driver`
+ * If the name is not PascalCase (e.g. a legacy string), return it lowercase.
+ */
+export function moduleNameToSlug(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .toLowerCase();
+}
+
+/**
  * Walks a `PluginNode` AST and produces the JSON plugin schema for mt-actions.
  * Collects semantic diagnostics for any violations of the language rules
  * (unknown keywords, missing required fields, etc.).
@@ -92,14 +105,19 @@ export class PluginEmitter {
   emit(ast: PluginNode): EmitResult {
     const plugin: Record<string, unknown> = {};
 
-    if (ast.displayName === null) {
-      this.ctx.error("Plugin is missing a display name");
+    if (ast.moduleName === null) {
+      this.ctx.error("Plugin is missing a module name");
     } else {
-      plugin["display_name"] = ast.displayName;
+      plugin["name"] = moduleNameToSlug(ast.moduleName);
     }
 
     for (const field of ast.metadata) {
       this.emitField(plugin, field, METADATA_FIELDS, "defplugin");
+    }
+
+    // If no @display_name metadata was provided, fall back to the module name
+    if (plugin["display_name"] === undefined && ast.moduleName !== null) {
+      plugin["display_name"] = ast.moduleName;
     }
 
     if (ast.matchBlock !== null) {
