@@ -336,6 +336,7 @@ export interface DefNode extends BaseNode {
 export interface OnNode extends BaseNode {
   kind: "On";
   event: string;
+  eventSpan: Span;
   body: Stmt[];
 }
 

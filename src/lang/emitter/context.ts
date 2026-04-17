@@ -58,8 +58,13 @@ export class BlockEmitContext extends EmitContext {
   /**
    * `true` when the accumulator (`$_`) is already carrying a value
    * that must not be overwritten (e.g. inside a pipe chain).
-   * FUTURE (Phase D): Restrict `$_` to pipe chains only. Arbitrary accumulator
-   * use outside pipes leads to code smell and potential shadowing bugs.
+   * Phase D validation (in lsp/validation.ts) restricts `$_` reads to pipe
+   * chains and event handlers at the source level. This flag is an emitter
+   * concern, it prevents the emitter from clobbering `$_` during nested pipes.
+   * HOEWEVER AS DISCUSSED: Nested pipes are NOT possible and aren't a concern.
+   * If a pipe is called inside a function call, that function call is a pipe step itself,
+   * and the return of the function will become the new pipe accumulator, which means the pipe
+   * accumulator is *transformed* by the function and thus DOES NOT need to be preserved.
    */
   accumulatorReserved = false;
 

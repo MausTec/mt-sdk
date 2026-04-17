@@ -356,6 +356,45 @@ end`;
   });
 });
 
+// --- Phase C: eventSpan on OnNode -------------------------------------------
+
+describe("Phase C: eventSpan targets the event atom", () => {
+  it("captures eventSpan pointing to the :event atom", () => {
+    const src = `
+defplugin "Test" do
+  on :speed_change do
+    int level = 0
+  end
+end`;
+    const { ast } = parseSource(src);
+    const handler = ast.handlers[0]!;
+    expect(handler.event).toBe("speed_change");
+    // eventSpan should point to the `:speed_change` atom, not the whole block
+    expect(handler.eventSpan.line).toBe(handler.span.line);
+    expect(handler.eventSpan.endCol - handler.eventSpan.col).toBe(
+      ":speed_change".length,
+    );
+  });
+
+  it("unknown event warning targets the event atom span", () => {
+    const src = `
+defplugin "Test" do
+  on :bogus_event do
+    int level = 0
+  end
+end`;
+    const result = transpile(src);
+    const warn = result.diagnostics.find(
+      (d) => d.level === "warning" && d.message.includes("bogus_event"),
+    );
+    expect(warn).toBeDefined();
+    // The span should be on the event atom, not the whole on block
+    const { ast } = parseSource(src);
+    const handler = ast.handlers[0]!;
+    expect(warn!.span).toEqual(handler.eventSpan);
+  });
+});
+
 describe("baseline: config fields emit correctly", () => {
   it("emits config with type, default, and constraints", () => {
     const src = `
@@ -1761,5 +1800,66 @@ defplugin Test do
 end`;
     const errs = transpileErrors(src);
     expect(errs.some((e) => e.includes("Cannot use @speed"))).toBe(true);
+  });
+});
+
+// --- Phase D: $_ accumulator restrictions -----------------------------------
+
+describe("Phase D: $_ restrictions", () => {
+  it("errors on $_ read in a def body outside a pipe", () => {
+    const src = `
+defplugin "Test" do
+  def test() do
+    $x = $_
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("$_") && e.includes("pipe"))).toBe(true);
+  });
+
+  it("allows $_ inside a pipe chain", () => {
+    const src = `
+defplugin "Test" do
+  def test(int speed) do
+    speed |> set_level()
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.filter((e) => e.includes("$_"))).toHaveLength(0);
+  });
+
+  it("errors on $_ in an event handler body outside a pipe", () => {
+    const src = `
+defplugin "Test" do
+  on :speed_change do
+    set_level($_)
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("$_") && e.includes("pipe"))).toBe(true);
+  });
+
+  it("allows $_ in an event handler pipe chain", () => {
+    const src = `
+defplugin "Test" do
+  on :speed_change do
+    $_ |> set_level()
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.filter((e) => e.includes("$_"))).toHaveLength(0);
+  });
+
+  it("errors on $_ in a fn body outside a pipe", () => {
+    const src = `
+defplugin "Test" do
+  fn bad = (int x) -> $_
+
+  def test() do
+    int y = bad(1)
+  end
+end`;
+    const errs = transpileErrors(src);
+    expect(errs.some((e) => e.includes("$_") && e.includes("pipe"))).toBe(true);
   });
 });

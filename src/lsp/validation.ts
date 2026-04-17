@@ -122,7 +122,7 @@ function validateOn(
     diags.push({
       level: "warning",
       message: `Unknown event \`${on.event}\``,
-      span: on.span,
+      span: on.eventSpan,
     });
   }
 
@@ -274,6 +274,7 @@ function validateExpr(
   symbols: SymbolTable,
   ctx: BodyContext | null,
   expr: Expr,
+  inPipe = false,
 ): void {
   switch (expr.kind) {
     case "ConfigRef": {
@@ -369,13 +370,13 @@ function validateExpr(
       }
 
       for (const arg of expr.args) {
-        validateExpr(diags, symbols, ctx, arg);
+        validateExpr(diags, symbols, ctx, arg, inPipe);
       }
       break;
     }
 
     case "Pipe":
-      validateExpr(diags, symbols, ctx, expr.head);
+      validateExpr(diags, symbols, ctx, expr.head, true);
 
       for (const step of expr.steps) {
         const fn = symbols.resolveFunction(step.call.name);
@@ -394,21 +395,34 @@ function validateExpr(
         }
         
         for (const arg of step.call.args) {
-          validateExpr(diags, symbols, ctx, arg);
+          validateExpr(diags, symbols, ctx, arg, true);
         }
       }
       break;
 
     case "Binary":
-      validateExpr(diags, symbols, ctx, expr.left);
-      validateExpr(diags, symbols, ctx, expr.right);
+      validateExpr(diags, symbols, ctx, expr.left, inPipe);
+      validateExpr(diags, symbols, ctx, expr.right, inPipe);
       break;
 
     case "Unary":
-      validateExpr(diags, symbols, ctx, expr.operand);
+      validateExpr(diags, symbols, ctx, expr.operand, inPipe);
       break;
 
-    // Leaf nodes: Literal, Accumulator, ErrorCode — no resolution needed
+    case "Accumulator":
+      // Phase D: $_ is only valid inside pipe chains.
+      // FUTURE (Phase G): Event handler argument binding will provide a proper
+      // way to access the event value — $_ errors in on blocks will resolve then.
+      if (!inPipe) {
+        diags.push({
+          level: "error",
+          message: "`$_` can only be used inside a pipe chain",
+          span: expr.span,
+        });
+      }
+      break;
+
+    // Leaf nodes: Literal, ErrorCode — no resolution needed
     default:
       break;
   }

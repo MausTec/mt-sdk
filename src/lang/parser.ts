@@ -512,6 +512,7 @@ class Parser {
       kind: "On",
       span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
       event: eventToken.value,
+      eventSpan: eventToken.span,
       body,
     };
   }
@@ -1393,7 +1394,7 @@ class Parser {
       this.diagnostics.push(
         langError(`Cannot assign to \`@${nameTok.value}\` here. Module attributes can only be set inside \`defplugin\` metadata`, nameTok.span),
       );
-      
+
       return null;
     }
 

@@ -221,7 +221,7 @@ describe("emitHandlers", () => {
   it("emits event handlers keyed by event name", () => {
     const ctx = new EmitContext();
     const handlers: OnNode[] = [
-      { kind: "On", event: "speedChange", body: [], span: SPAN },
+      { kind: "On", event: "speedChange", eventSpan: SPAN, body: [], span: SPAN },
     ];
     const result = emitHandlers(ctx, handlers);
     expect(result).toHaveProperty("speedChange");
@@ -230,8 +230,8 @@ describe("emitHandlers", () => {
   it("reports error for duplicate event handlers", () => {
     const ctx = new EmitContext();
     const handlers: OnNode[] = [
-      { kind: "On", event: "speedChange", body: [], span: SPAN },
-      { kind: "On", event: "speedChange", body: [], span: SPAN },
+      { kind: "On", event: "speedChange", eventSpan: SPAN, body: [], span: SPAN },
+      { kind: "On", event: "speedChange", eventSpan: SPAN, body: [], span: SPAN },
     ];
     emitHandlers(ctx, handlers);
     expect(ctx.diagnostics).toContainEqual(

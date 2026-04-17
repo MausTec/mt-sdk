@@ -267,6 +267,7 @@ export function emitHandlers(
     } else {
       ctx.error(
         `Multiple handlers defined for event "${handler.event}"`,
+        handler.eventSpan,
       );
     }
   }

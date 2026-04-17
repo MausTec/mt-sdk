@@ -262,9 +262,9 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
     }
 
     case "On":
-      // Only show hover on the header line, not on body gaps (comments, blanks).
-      if (line > node.span.line) return null;
-      return mkHover(`\`\`\`mtp\non :${node.event}\n\`\`\`\n\nEvent handler`, node.span);
+      // Only show hover when cursor is on the event atom, not body content.
+      if (line !== node.eventSpan.line) return null;
+      return mkHover(`\`\`\`mtp\non :${node.event}\n\`\`\`\n\nEvent handler`, node.eventSpan);
 
     // FUTURE (Phase H): Resolve event atom to SDK documentation, including arg type.
     // FUTURE (Phase G): Resolve $_ in event handler to the event argument.

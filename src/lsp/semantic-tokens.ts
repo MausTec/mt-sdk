@@ -205,12 +205,9 @@ function visitDef(builder: SemanticTokensBuilder, symbols: SymbolTable, def: Def
 }
 
 function visitOn(builder: SemanticTokensBuilder, symbols: SymbolTable, on: OnNode): void {
-  // Event name uses the `event` token type
-  // The event atom (`:name`) starts at span.line; the `:` + name text starts
-  // after `on `. We don't have a separate span for the event name, so skip
-  // declaration-site highlighting for the event for now.
-  // FUTURE (Phase C): eventSpan will provide a separate span for the event
-  // atom, enabling semantic highlighting and SDK-aware hover for event names.
+  // Highlight the event atom (`:name`) using the eventSpan
+  const eventLen = on.eventSpan.endCol - on.eventSpan.col;
+  push(builder, on.eventSpan, eventLen, typeIndex(SemanticTokenTypes.event), 0);
 
   // Body statements
   for (const stmt of on.body) {
@@ -377,7 +374,7 @@ function visitExpr(
         typeIndex(SemanticTokenTypes.variable),
         modBits(SemanticTokenModifiers.readonly),
       );
-      
+
       break;
     }
 
