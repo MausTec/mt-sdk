@@ -243,10 +243,6 @@ describe("exprToActions", () => {
     expect(ctx.getTempVars()).toEqual(["__t0"]);
   });
 
-  // --- Remaining expression kinds (stubs) ---
-  // TODO: Pipe -> action sequence with $_ carry-through
-  // TODO: Index -> {getbyte: [target, index], to?: target}
-
   // --- Call: host/builtin functions ---
 
   describe("Call (host/builtin)", () => {

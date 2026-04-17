@@ -127,8 +127,8 @@ export class SymbolTable {
    * gracefully (return null rather than error).
    */
   registerBuiltins(_sdkVersion: string): void {
-    // TODO: Load builtin function descriptors from mt-sdk core and populate
-    //       this.functions with source: "builtin".
+    // FUTURE (Phase H): Load builtin function descriptors from mt-sdk core
+    //       and populate this.functions with source: "builtin".
   }
 
   /**
@@ -139,8 +139,8 @@ export class SymbolTable {
    * sdkVersion + platform list.
    */
   registerRuntimeFunctions(_sdkVersion: string, _platforms: string[]): void {
-    // TODO: Load platform-specific runtime function descriptors and populate
-    //       this.functions with source: "runtime".
+    // FUTURE (Phase H): Load platform-specific runtime function descriptors
+    //       and populate this.functions with source: "runtime".
   }
 
   // --- Lookup helpers --------------------------------------------------------

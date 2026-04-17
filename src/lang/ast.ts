@@ -363,3 +363,10 @@ export type ASTNode =
   | MatchPredicate
   | Stmt
   | Expr;
+
+// --- Type Guards --------------------------------------------------------------
+
+/** Type guard for Literal type expressions. */
+export function isLiteral(expr: Expr): expr is LiteralExpr {
+  return expr.kind === "Literal";
+}

@@ -58,9 +58,8 @@ export class BlockEmitContext extends EmitContext {
   /**
    * `true` when the accumulator (`$_`) is already carrying a value
    * that must not be overwritten (e.g. inside a pipe chain).
-   * TODO: A future lookahead would be to scan our code for any accumulator references outside of a pipe chain, OR
-   * ensure the syntax disallows that to prevent shadowing a "free" accumulator that's referenced later. I think
-   * arbitrary accumulator use will lead to code smell, and it should only ever appear in a pipe in the MTP context.
+   * FUTURE (Phase D): Restrict `$_` to pipe chains only. Arbitrary accumulator
+   * use outside pipes leads to code smell and potential shadowing bugs.
    */
   accumulatorReserved = false;
 

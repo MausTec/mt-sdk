@@ -112,10 +112,11 @@ const BINARY_OPS = new Map<TokenKind, { prec: number; op: BinaryOp }>([
  * Returns `true` if the given token can appear as the start of a primary
  * expression. Used to disambiguate paren-free calls (`name expr`) from
  * bare identifiers at statement level.
- * 
- * TODO: Trace usage to evaluate necessity, since a statement level arg-less
- * fn call needs parens, and variable access is not effectful so a bare var 
- * has no meaning.
+ *
+ * This exists because MTP supports paren-free single-argument calls:
+ * `set_level speed` parses as a call with one arg, while `set_level` alone
+ * is a bare identifier (not effectful). Without this check, the parser
+ * would greedily consume the next token as an argument in every case.
  */
 function canStartExpr(t: Token): boolean {
   switch (t.kind) {
@@ -229,8 +230,8 @@ class Parser {
    * doc-comment lines. A blank line (two consecutive newlines) resets the
    * accumulator, so only comments immediately preceding a construct survive.
    * 
-   * TODO: Future - the doc parser that consumes this would parse @/token statements into KVP token/value
-   * to handle things like @/arg or @/deprecated 
+   * FUTURE (Phase I): A doc parser will consume these raw lines and extract
+   * structured tags (@param, @deprecated, etc.) into DocTag[] objects.
    */
   private consumeTrivia(): string[] {
     let docs: string[] = [];
@@ -424,8 +425,8 @@ class Parser {
   }
 
   // --- fn expression ---------------------------------------------------------
-  // TODO: Design review: Should we treat fn as macros since it is a distinct expression?
-  /** Parse `fn name = (type arg, ...) -> expr` — single-expression function. */
+  // FUTURE (Phase F): Design review: fn may become a macro/inline construct.
+  /** Parse `fn name = (type arg, ...) -> expr`, an exclusively single-expression function. */
   private parseFnExpression(docs: string[]): FnNode | null {
     const kwToken = this.advance(); // consume `fn`
 
@@ -1175,8 +1176,6 @@ class Parser {
     }
 
     // Block if: `if cond do ... [else ...] end`
-    // TODO: This has an older draft for a pure inline IF syntax, but I think for simplicity we should evaluate
-    // disallowing full inline, and error after the "do" on any other non-comment tokens.
     if (t.kind === TokenKind.If || t.kind == TokenKind.Unless) {
       const s = this.parseIfStmt();
       if (s === null) return null;
@@ -1184,7 +1183,7 @@ class Parser {
       // Nothing meaningful should follow `end` on the same line
       const after = this.peek();
 
-      // TODO: This should be a list of valid post-do line ending tokens:
+      // Valid post-block line-ending tokens:
       if (after.kind !== TokenKind.Newline && after.kind !== TokenKind.Comment &&
           after.kind !== TokenKind.EOF && after.kind !== TokenKind.End &&
           after.kind !== TokenKind.Else) {
@@ -1439,7 +1438,9 @@ class Parser {
     let variableSpan: Span;
     let global = false;
 
-    // TODO: Update this to also support config reads (however, config does not currently allow string?)
+    // FUTURE: Config refs as iterable source: `for i in @some_config do`.
+    // Requires config to support iterable types (string or array) at the
+    // runtime level. Currently config values are scalar only.
     if (this.check(TokenKind.Identifier)) {
       const varToken = this.advance();
       variable = varToken.value;
@@ -1501,7 +1502,7 @@ class Parser {
     }
 
     // Range: `start..end`
-    // TODO: Allowing variables for a range operation is powerful, but it presents a halting problem quandry
+    // Note: Variable-bound ranges (e.g. `for i in 0..n`) are legal
     if (this.check(TokenKind.DotDot)) {
       this.advance(); // consume `..`
       const endExpr = this.parseExpr();
@@ -1539,7 +1540,7 @@ class Parser {
     let value: Expr | null = null;
     const next = this.peek();
 
-    // TODO: See previous comment about valid trivial line ending construct list:
+    // Valid post-return line-ending tokens:
     if (
       next.kind !== TokenKind.Newline &&
       next.kind !== TokenKind.EOF &&

@@ -224,7 +224,7 @@ function emitCall(
 ): MtpAction[] {
   const isLocal = ctx.localFunctions.has(expr.name);
 
-  // TODO: Evaluate if arg validation belongs in the parser or in a semantic analysis pass
+  // FUTURE (Phase H): Move arg validation to linker/semantic analysis pass
   if (isLocal && expr.args.length > ctx.localFunctions.get(expr.name)!.length) {
     const expected = ctx.localFunctions.get(expr.name)!.length;
 
@@ -287,9 +287,8 @@ function emitPipe(
   }
 
   // Reserve accumulator for the chain
-  // TODO: If the accumulator is already reserved before entering the pipe,
-  // we may need to spill $_ to a temp so that the chain doesn't clobber
-  // the outer value. Or, we could error spectacularly.
+  // FUTURE (Phase D): If the accumulator is already reserved before entering
+  // the pipe, we should emit an error: nested pipes are not allowed.
 
   const wasReserved = ctx.accumulatorReserved;
   ctx.accumulatorReserved = true;

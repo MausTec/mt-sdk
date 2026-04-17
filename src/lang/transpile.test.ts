@@ -1192,7 +1192,21 @@ end`;
     expect(getbyte.to).toBe("$val");
   });
 
-  // TODO: Add test cases for local byte array initialization as well.
+  it("compiles local byte array declaration to vars with tape notation", () => {
+    const src = `
+defplugin "Test" do
+  def process() do
+    int buf[8]
+    buf[0] = 42
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = (plugin as any).functions.process;
+    expect(fn.vars).toContain("buf[8]");
+    const setbyte = fn.actions.find((a: any) => a.setbyte !== undefined);
+    expect(setbyte).toBeDefined();
+    expect(setbyte.setbyte[0]).toBe("$buf");
+  });
 });
 
 // ===========================================================================

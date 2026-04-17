@@ -5,9 +5,9 @@
  * - context.ts      — shared EmitContext (diagnostics, scope tracking)
  * - plugin.ts       — top-level plugin emission (metadata, config, globals, match)
  * - functions.ts    — def, fn, on handler emission + local extraction
- * - statements.ts   — Stmt[] -> MtpAction[] compilation (TODO)
- * - expressions.ts  — Expr -> MtpValue / MtpAction[] compilation (TODO)
- * - conditions.ts   — Expr -> MtpCondition compilation (TODO)
+ * - statements.ts   — Stmt[] -> MtpAction[] compilation
+ * - expressions.ts  — Expr -> MtpValue / MtpAction[] compilation
+ * - conditions.ts   — Expr -> MtpCondition compilation
  */
 
 import type { PluginNode } from "../ast.js";

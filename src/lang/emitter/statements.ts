@@ -375,8 +375,6 @@ function emitForString(
 
 // --- If / Unless (block form) -------------------------------------------------
 
-// TODO: Similar to emitWhile, this should handle accepting "unless" as a top-level conditional.
-
 function emitIf(stmt: IfStmt, ctx: BlockEmitContext): MtpAction[] {
   const result = exprToCondition(stmt.condition, ctx);
   if (result === null) {

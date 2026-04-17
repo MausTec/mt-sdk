@@ -209,8 +209,8 @@ function visitOn(builder: SemanticTokensBuilder, symbols: SymbolTable, on: OnNod
   // The event atom (`:name`) starts at span.line; the `:` + name text starts
   // after `on `. We don't have a separate span for the event name, so skip
   // declaration-site highlighting for the event for now.
-  // TODO: See the comment in the test mtp file for how to improve documentation lookup
-  // and event validation from the SDK spec here. We will need a separate span.
+  // FUTURE (Phase C): eventSpan will provide a separate span for the event
+  // atom, enabling semantic highlighting and SDK-aware hover for event names.
 
   // Body statements
   for (const stmt of on.body) {

@@ -73,8 +73,8 @@ export function startServer(): void {
     // LSP positions are 0-based; Span is 1-based.
     const path = findNodePath(doc.parsed.ast, position.line + 1, position.character + 1);
 
-    // TODO: getHoverContent needs a document-specific SDK registered to the Symbol Table, probably, 
-    // since the SDK docs are based on that document's sdkVersion and productFamily.
+    // FUTURE (Phase H): getHoverContent needs a document-specific SDK
+    // registered to the Symbol Table (sdkVersion + productFamily).
     return getHoverContent(doc.parsed.ast, path, position.line + 1, position.character + 1);
   });
 

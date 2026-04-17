@@ -259,8 +259,8 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
       if (line > node.span.line) return null;
       return mkHover(`\`\`\`mtp\non :${node.event}\n\`\`\`\n\nEvent handler`, node.span);
 
-    // TODO: The atom in `on :event` should resolve to pull the event documentation from the SDK, including the event arg type.
-    // TODO: The first $_ in the context of an event handler should resolve to the argument passed to the handler
+    // FUTURE (Phase H): Resolve event atom to SDK documentation, including arg type.
+    // FUTURE (Phase G): Resolve $_ in event handler to the event argument.
 
     // --- Assignment targets --------------------------------------------------
 

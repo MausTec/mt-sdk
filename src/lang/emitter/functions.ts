@@ -32,13 +32,8 @@ import { exprToValue, exprToActions } from "./expressions.js";
 
 // --- Helpers ------------------------------------------------------------------
 
-/**
- * Type guard for Literal type expressions
- * TODO: Move this to ast.js
- */
-export function isLiteral(expr: Expr): expr is LiteralExpr {
-  return expr.kind === "Literal";
-}
+/** @deprecated Import `isLiteral` from `../ast.js` instead. Re-exported for compatibility. */
+export { isLiteral } from "../ast.js";
 
 
 /**
@@ -63,8 +58,8 @@ export function exprToJson(expr: Expr): MtpValue | null {
 /**
  * Extended function definition that includes SDK-only metadata
  * not consumed by the runtime (e.g. returnType for tooling).
- * TODO: Consolidate the returnType annotation once we decide how docs are going to work for
- * redistributable MT JSON code.
+ * FUTURE (Phase K): Consolidate returnType annotation once doc format is
+ * decided for redistributable MT JSON code.
  */
 export type EmittedFunctionDef = MtpFunctionDefObject & { returnType?: string };
 
@@ -87,9 +82,8 @@ export function extractLocals(body: Stmt[]): {
     d.arraySize !== null ? `${d.name}[${d.arraySize}]` : d.name,
   );
 
-  // TODO: Delegate init-value emission to the set emitter once statement
-  // compilation is implemented. The set emitter should accept a batch of
-  // assignments so multiple keys can be combined into a single `set` action.
+  // FUTURE (Phase E): Delegate non-literal init expressions to
+  // exprToActions() for full expression pipeline support.
   const initActions = decls
     .filter((d) => d.arraySize === null && d.init !== null)
     .flatMap((d) => {

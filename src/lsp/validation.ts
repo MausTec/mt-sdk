@@ -10,7 +10,8 @@ import type {
 } from "../lang/ast.js";
 import { SymbolTable } from "./symbol-table.js";
 
-// TODO: Should the Validator be a concern of the LSP? Because this feels like a lang/ module concern the more I write it.
+// FUTURE (Phase H): Move validation to lang/linker.ts since this is a language
+// concern, not an editor concern. The LSP should import from lang/.
 
 // --- Diagnostic type ---------------------------------------------------------
 
@@ -21,7 +22,7 @@ export interface ValidationDiagnostic {
 }
 
 // --- Known event names -------------------------------------------------------
-// TODO: This is NOT a source of truth! The runtime SDK declares this!
+// FUTURE (Phase H): Load from mt-runtimes catalog instead of hardcoding.
 
 const KNOWN_EVENTS = new Set([
   "connect",
@@ -220,9 +221,8 @@ function validateStmt(
 
     case "For": {
       // Loop variable must be pre-declared
-      // TODO: I really think this validator should be part of the transpiler core and not LSP specific, so that the CLI can emit errors
-      // for undeclared loop variables rather than relying on the LSP to catch them.
-      // I actually think I wired this to the CLI, but imported from the LSP instead of Lang/ 
+      // FUTURE: Move this validation to lang/linker.ts (Phase H) so the CLI
+      // emits errors without depending on LSP code.
       if (stmt.global) {
         const resolved = symbols.resolveGlobal(stmt.variable);
         if (resolved === undefined) {

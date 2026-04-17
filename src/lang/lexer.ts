@@ -324,7 +324,7 @@ class Lexer {
       }
 
       // Handle the "pipe" or "or" operator(`||` or `|>`) or binary or (`|`)
-      // TODO: Logical OR is not actually in our spec
+      // FUTURE (Phase J): Remove `||` since MTP uses keyword `or` exclusively
       case "|": {
         if (this.peek(1) === "|") {
           this.advance();
