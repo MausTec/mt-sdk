@@ -29,7 +29,7 @@ const BUILTIN_KEYS = new Set([
   "add", "sub", "mul", "div", "mod",
   "inc", "dec", "concat", "substr", "strlen",
   "charat", "getbyte", "setbyte", "strcmp",
-  "round", "chr", "toString",
+  "round", "chr", "to_string",
   "actions",
 ]);
 

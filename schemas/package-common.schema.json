@@ -105,7 +105,7 @@
         "hubMetadata": {
             "type": "object",
             "description": "Hub distribution metadata. These fields are consumed by the Maus-Tec Hub for indexing, display, and verification. The device ignores them at runtime.",
-            "required": [ "name", "version", "sdkVersion", "displayName", "description", "author", "license", "repository" ],
+            "required": [ "name", "version", "sdk_version", "display_name", "description", "author", "license", "repository" ],
             "properties": {
                 "name": {
                     "type": "string",
@@ -119,13 +119,13 @@
                     "pattern": "^\\d+\\.\\d+\\.\\d+",
                     "examples": [ "0.1.0", "1.0.0" ]
                 },
-                "sdkVersion": {
+                "sdk_version": {
                     "type": "string",
                     "description": "Minimum eom-sdk version required by this package.",
                     "pattern": "^\\d+\\.\\d+\\.\\d+",
                     "examples": [ "1.0.0" ]
                 },
-                "displayName": {
+                "display_name": {
                     "type": "string",
                     "description": "Human-readable name for menus and Hub listing."
                 },

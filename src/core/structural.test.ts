@@ -14,8 +14,8 @@ describe("structuralCheck", () => {
     const plugin = {
       name: "test-plugin",
       version: "1.0.0",
-      sdkVersion: "1.0.0",
-      displayName: "Test Plugin",
+      sdk_version: "1.0.0",
+      display_name: "Test Plugin",
       description: "A test plugin",
       author: "Test Author",
       license: "MIT",
@@ -31,8 +31,8 @@ describe("structuralCheck", () => {
     const plugin = {
       name: "Bad Name!",
       version: "1.0.0",
-      sdkVersion: "1.0.0",
-      displayName: "Test",
+      sdk_version: "1.0.0",
+      display_name: "Test",
       author: "Test",
       license: "MIT",
       type: "feature",
@@ -46,8 +46,8 @@ describe("structuralCheck", () => {
     const plugin = {
       name: "test",
       version: "not-semver",
-      sdkVersion: "1.0.0",
-      displayName: "Test",
+      sdk_version: "1.0.0",
+      display_name: "Test",
       author: "Test",
       license: "MIT",
       type: "feature",
@@ -61,8 +61,8 @@ describe("structuralCheck", () => {
     const plugin = {
       name: "test",
       version: "1.0.0",
-      sdkVersion: "1.0.0",
-      displayName: "Test",
+      sdk_version: "1.0.0",
+      display_name: "Test",
       author: "Test",
       license: "MIT",
       type: "feature",

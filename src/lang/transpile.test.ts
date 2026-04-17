@@ -255,7 +255,7 @@ describe("baseline: minimal valid plugin", () => {
 defplugin "Minimal" do
 end`;
     const plugin = transpileOk(src);
-    expect(plugin.displayName).toBe("Minimal");
+    expect(plugin.display_name).toBe("Minimal");
   });
 
   it("transpiles globals, config, def, and on blocks", () => {
@@ -275,17 +275,17 @@ defplugin "Full" do
     int x = 10
   end
 
-  on :speedChange do
+  on :speed_change do
     int level = 0
   end
 end`;
     const plugin = transpileOk(src);
-    expect(plugin.displayName).toBe("Full");
+    expect(plugin.display_name).toBe("Full");
     expect(plugin.variables).toEqual({ counter: 0, name: "test" });
     expect(plugin.config).toHaveProperty("speed");
     expect(plugin.config).toHaveProperty("enabled");
     expect(plugin.functions).toHaveProperty("initialize");
-    expect(plugin.events).toHaveProperty("speedChange");
+    expect(plugin.events).toHaveProperty("speed_change");
   });
 });
 
@@ -780,12 +780,12 @@ end`;
   it("parses a const in an on block", () => {
     const src = `
 defplugin "Test" do
-  on :speedChange do
+  on :speed_change do
     const int maxLevel = 20
   end
 end`;
     const plugin = transpileOk(src);
-    const handler = plugin.events?.["speedChange"] as { vars?: string[] };
+    const handler = plugin.events?.["speed_change"] as { vars?: string[] };
     expect(handler.vars).toContain("maxLevel");
   });
 
@@ -1037,7 +1037,7 @@ end`;
   });
 
   it("does not warn on known event names", () => {
-    for (const event of ["connect", "disconnect", "speedChange", "modeSet", "tick"]) {
+    for (const event of ["connect", "disconnect", "speed_change", "mode_set", "tick"]) {
       const src = `
 defplugin "Test" do
   on :${event} do
@@ -1105,7 +1105,7 @@ end`;
     const plugin = transpileOk(src);
     const match = (plugin as unknown as Record<string, unknown>).match as Record<string, unknown>;
     expect(match).toBeDefined();
-    expect(match.bleNamePrefix).toBe("LVS-Max");
+    expect(match.ble_name_prefix).toBe("LVS-Max");
     expect(match.vid).toBe("1234");
   });
 
@@ -1130,7 +1130,7 @@ defplugin "Test" do
 end`;
     const plugin = transpileOk(src);
     const match = (plugin as unknown as Record<string, unknown>).match as Record<string, unknown>;
-    expect(match.bleName).toBe("LVS-Max001");
+    expect(match.ble_name).toBe("LVS-Max001");
   });
 
   it("supports serial predicate", () => {

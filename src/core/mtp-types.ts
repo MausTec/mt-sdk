@@ -37,9 +37,9 @@ export interface MtpConfigField {
 
 /** Device matching criteria (BLE or Maus-Bus). */
 export interface MtpMatch {
-  bleNamePrefix?: string;
-  bleName?: string;
-  bleServiceUUID?: string;
+  ble_name_prefix?: string;
+  ble_name?: string;
+  ble_service_uuid?: string;
   vid?: number;
   pid?: number;
   serial?: number | null;
@@ -108,7 +108,7 @@ export interface MtpActionObject {
   charat?: MtpPair;
   concat?: MtpValue[];
   chr?: MtpValue;
-  toString?: MtpValue;
+  to_string?: MtpValue;
   substr?: [MtpValue, MtpValue, MtpValue];
 
   // --- Byte array operations ---
@@ -163,8 +163,8 @@ export interface MtpPlugin {
   // Hub metadata
   name?: string;
   version?: string;
-  sdkVersion?: string;
-  displayName?: string;
+  sdk_version?: string;
+  display_name?: string;
   description?: string;
   author?: string;
   license?: string;

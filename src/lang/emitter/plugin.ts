@@ -34,8 +34,6 @@ export interface EmitResult {
 // --- Language field definitions -----------------------------------------------
 
 export interface FieldDef {
-  /** JSON output key. Defaults to the source key when omitted. */
-  jsonKey?: string;
   /** Whether the value is always emitted as a JSON array. */
   array?: true;
 }
@@ -46,7 +44,7 @@ export interface FieldDef {
  */
 export const METADATA_FIELDS: Readonly<Record<string, FieldDef>> = {
   version:     {},
-  sdkVersion:  {},
+  sdk_version: {},
   description: {},
   author:      {},
   license:     {},
@@ -58,13 +56,11 @@ export const METADATA_FIELDS: Readonly<Record<string, FieldDef>> = {
 
 /**
  * Known predicate keys inside a `match do ... end` block.
- * Keys are the source-language identifiers (snake_case matching the JSON).
- * TODO: Our language cleanup task specifically requested that the MTP language KEEP camelCase conventions,
- * but the JSON output keys were snake_case. This needs to be reviewed against the runtime before shipping.
+ * Keys are the source-language identifiers (snake_case), matching the JSON output directly.
  */
 export const MATCH_FIELDS: Readonly<Record<string, FieldDef>> = {
-  ble_name_prefix: { jsonKey: "bleNamePrefix" },
-  ble_name:        { jsonKey: "bleName" },
+  ble_name_prefix: {},
+  ble_name:        {},
   vid:             {},
   pid:             {},
   serial:          {},
@@ -99,7 +95,7 @@ export class PluginEmitter {
     if (ast.displayName === null) {
       this.ctx.error("Plugin is missing a display name");
     } else {
-      plugin["displayName"] = ast.displayName;
+      plugin["display_name"] = ast.displayName;
     }
 
     for (const field of ast.metadata) {
@@ -229,7 +225,7 @@ export class PluginEmitter {
         continue;
       }
 
-      const jsonKey = fieldDef.jsonKey ?? pred.key;
+      const jsonKey = pred.key;
       match[jsonKey] = exprToJson(pred.value);
     }
 
@@ -255,7 +251,7 @@ export class PluginEmitter {
       return;
     }
 
-    const jsonKey = def.jsonKey ?? field.key;
+    const jsonKey = field.key;
 
     if (Array.isArray(field.value)) {
       target[jsonKey] = field.value.map(exprToJson);

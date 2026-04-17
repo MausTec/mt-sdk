@@ -404,15 +404,15 @@ describe("exprToActions", () => {
       const ctx = new BlockEmitContext();
       const expr: Expr = {
         kind: "Pipe",
-        head: { kind: "Literal", value: 5, span: SPAN },
+        head: { kind: "Literal", varType: "int", value: 5, span: SPAN },
         steps: [
           {
-            call: { kind: "Call", name: "toString", args: [], span: SPAN },
+            call: { kind: "Call", name: "to_string", args: [], span: SPAN },
             carriedType: "unknown",
           },
           {
             call: { kind: "Call", name: "concat", args: [
-              { kind: "Literal", value: "prefix:", span: SPAN },
+              { kind: "Literal", varType: "string", value: "prefix:", span: SPAN },
               { kind: "Accumulator", span: SPAN },
             ], span: SPAN },
             carriedType: "unknown",
@@ -420,9 +420,9 @@ describe("exprToActions", () => {
         ],
         span: SPAN,
       };
-      expect(exprToActions(expr, ctx, "$result")).toEqual([
+      expect(exprToActions(expr, ctx, "$result")).toEqual<any>([
         { set: 5 },                                   // head → $_
-        { toString: [] },                              // step 1 → $_
+        { to_string: [] },                              // step 1 → $_
         { concat: ["prefix:", "$_"], to: "$result" },  // step 2 → target
       ]);
     });
@@ -455,7 +455,7 @@ describe("exprToActions", () => {
       const expr: Expr = {
         kind: "Index",
         target: { kind: "Identifier", name: "tape", span: SPAN },
-        index: { kind: "Literal", value: 3, span: SPAN },
+        index: { kind: "Literal", varType: "int", value: 3, span: SPAN },
         span: SPAN,
       };
       expect(exprToActions(expr, ctx, "$out")).toEqual([
@@ -472,7 +472,7 @@ describe("exprToActions", () => {
           kind: "Binary",
           op: "+",
           left: { kind: "Identifier", name: "i", span: SPAN },
-          right: { kind: "Literal", value: 1, span: SPAN },
+          right: { kind: "Literal", varType: "int", value: 1, span: SPAN },
           span: SPAN,
         },
         span: SPAN,

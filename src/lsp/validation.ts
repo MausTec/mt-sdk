@@ -26,15 +26,15 @@ export interface ValidationDiagnostic {
 const KNOWN_EVENTS = new Set([
   "connect",
   "disconnect",
-  "speedChange",
-  "modeSet",
+  "speed_change",
+  "mode_set",
   "tick",
   "start",
   "stop",
   "restart",
   "error",
-  "airChange",
-  "pressureChange",
+  "air_change",
+  "pressure_change",
 ]);
 
 // --- Body context (same shape as semantic-tokens) ----------------------------

@@ -47,7 +47,7 @@ function emptyPlugin(overrides: Partial<PluginNode> = {}): PluginNode {
 describe("PluginEmitter.emit", () => {
   it("emits displayName", () => {
     const { plugin } = new PluginEmitter().emit(emptyPlugin());
-    expect(plugin.displayName).toBe("Test Plugin");
+    expect(plugin.display_name).toBe("Test Plugin");
   });
 
   it("reports error when displayName is missing", () => {
@@ -197,7 +197,7 @@ describe("PluginEmitter.emitMatchBlock", () => {
       ],
     };
     const { plugin } = new PluginEmitter().emit(emptyPlugin({ matchBlock }));
-    expect(plugin.match).toEqual({ bleNamePrefix: "LVS-", vid: 0x1234 });
+    expect(plugin.match).toEqual({ ble_name_prefix: "LVS-", vid: 0x1234 });
   });
 
   it("reports error for unknown match predicates", () => {

@@ -26,8 +26,8 @@ export function structuralCheck(
   const requiredFields = [
     "name",
     "version",
-    "sdkVersion",
-    "displayName",
+    "sdk_version",
+    "display_name",
     "author",
     "license",
     "type",
@@ -61,10 +61,10 @@ export function structuralCheck(
       "version",
     );
   }
-  if (typeof plugin["sdkVersion"] === "string" && !SEMVER_RE.test(plugin["sdkVersion"])) {
+  if (typeof plugin["sdk_version"] === "string" && !SEMVER_RE.test(plugin["sdk_version"])) {
     error(
-      `sdkVersion must be semver (got "${plugin["sdkVersion"]}")`,
-      "sdkVersion",
+      `sdk_version must be semver (got "${plugin["sdk_version"]}")`,
+      "sdk_version",
     );
   }
 
