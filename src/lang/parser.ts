@@ -19,6 +19,7 @@ import type {
   VarType, 
   FnNode, 
   OnNode, 
+  EventBinding,
   Stmt, 
   LocalDeclStmt, 
   AssignLocalStmt, 
@@ -439,7 +440,13 @@ class Parser {
   }
 
   // --- fn expression ---------------------------------------------------------
-  // FUTURE (Phase F): Design review: fn may become a macro/inline construct.
+  // FUTURE (Phase F): fn currently compiles as a standalone function. Consider
+  // making fn a macro/inline construct where the body is substituted at each
+  // call site with arguments bound. This would eliminate call overhead for
+  // simple expressions and align fn with its pure, single-expression
+  // semantics, effectively making fn a named expression alias rather than
+  // a runtime function. Requires an optimizer pass that detects fn definitions,
+  // substitutes parameters, and removes inlined fns from the functions map.
   /** Parse `fn name = (type arg, ...) -> expr`, an exclusively single-expression function. */
   private parseFnExpression(docs: string[]): FnNode | null {
     const kwToken = this.advance(); // consume `fn`
@@ -491,7 +498,7 @@ class Parser {
 
   // --- Event handlers ---------------------------------------------------------
 
-  /** Parse `on :event do ... end` as an event handler. `event` is the atom name without `:`. */
+  /** Parse `on :event [with name, name2] do ... end` as an event handler. */
   private parseOnNode(): OnNode | null {
     const kwToken = this.advance(); // consume `on`
 
@@ -503,6 +510,33 @@ class Parser {
 
     const eventToken = this.advance();
 
+    // Optional `with` clause for named payload bindings
+    const bindings: EventBinding[] = [];
+    if (this.check(TokenKind.With)) {
+      this.advance(); // consume `with`
+
+      // Parse comma-separated identifier list: `with name` or `with a, b, c`
+      while (!this.check(TokenKind.Do) && !this.check(TokenKind.Newline) && !this.check(TokenKind.EOF)) {
+        if (!this.check(TokenKind.Identifier)) {
+          this.diagnostics.push(langError("Expected binding name after `with`", this.peek().span));
+          break;
+        }
+
+        const nameToken = this.advance();
+        
+        bindings.push({ 
+          name: nameToken.value, 
+          span: nameToken.span }
+        );
+
+        this.eat(TokenKind.Comma);
+      }
+
+      if (bindings.length === 0) {
+        this.diagnostics.push(langError("`with` requires at least one binding name", eventToken.span));
+      }
+    }
+
     this.expectDoAndNewline(`after \`on :${eventToken.value}\``);
 
     const body = this.parseBlockBody(false);
@@ -513,6 +547,7 @@ class Parser {
       span: mergeSpan(kwToken.span, endToken?.span ?? kwToken.span),
       event: eventToken.value,
       eventSpan: eventToken.span,
+      bindings,
       body,
     };
   }

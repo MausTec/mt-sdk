@@ -31,6 +31,9 @@ export enum TokenKind {
   In = "in",
   Return = "return",
 
+  // --- Binding keywords -------------------------------------------------------
+  With = "with",
+
   // --- Modifier keywords -----------------------------------------------------
   Const = "const",
 

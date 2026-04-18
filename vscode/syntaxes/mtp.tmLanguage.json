@@ -5,6 +5,7 @@
     "patterns": [
         { "include": "#comment" },
         { "include": "#string" },
+        { "include": "#defplugin" },
         { "include": "#fn-pure" },
         { "include": "#fn-block" },
         { "include": "#on-handler" },
@@ -17,7 +18,9 @@
         { "include": "#atom" },
         { "include": "#special-vars" },
         { "include": "#global-var" },
-        { "include": "#config-ref" },
+        { "include": "#config-accessor" },
+        { "include": "#meta-accessor" },
+        { "include": "#module-attr" },
         { "include": "#operators" },
         { "include": "#kwarg-key" },
         { "include": "#meta-key" },
@@ -40,6 +43,15 @@
             ]
         },
 
+        "defplugin": {
+            "comment": "defplugin ModuleName do - plugin definition with PascalCase module name",
+            "match": "\\b(defplugin)\\s+([A-Z][a-zA-Z0-9]*)",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "entity.name.type.module.mtp" }
+            }
+        },
+
         "fn-pure": {
             "comment": "fn name = (type arg) -> expr  - pure single-expression function",
             "match": "\\b(fn)\\s+(\\w+)\\s*(=)",
@@ -60,11 +72,13 @@
         },
 
         "on-handler": {
-            "comment": "on :event do",
-            "match": "\\b(on)\\s+(:\\w+)",
+            "comment": "on :event [with binding, ...] do",
+            "match": "\\b(on)\\s+(:\\w+)(?:\\s+(with)\\s+([\\w,\\s]+?))?(?=\\s+do\\b)",
             "captures": {
                 "1": { "name": "keyword.other.definition.mtp" },
-                "2": { "name": "entity.name.type.event.mtp" }
+                "2": { "name": "entity.name.type.event.mtp" },
+                "3": { "name": "keyword.control.mtp" },
+                "4": { "name": "variable.parameter.mtp" }
             }
         },
 
@@ -129,10 +143,32 @@
             "name": "variable.other.global.mtp"
         },
 
-        "config-ref": {
-            "comment": "@name - config value read (read-only)",
-            "match": "@[a-zA-Z_][a-zA-Z0-9_]*",
-            "name": "support.variable.config.mtp"
+        "config-accessor": {
+            "comment": "config.name - config value read (read-only dot-accessor)",
+            "match": "\\b(config)(\\.)([a-zA-Z_][a-zA-Z0-9_]*)",
+            "captures": {
+                "1": { "name": "variable.language.mtp" },
+                "2": { "name": "punctuation.accessor.dot.mtp" },
+                "3": { "name": "support.variable.config.mtp" }
+            }
+        },
+
+        "meta-accessor": {
+            "comment": "meta.name - metadata value read (read-only dot-accessor)",
+            "match": "\\b(meta)(\\.)([a-zA-Z_][a-zA-Z0-9_]*)",
+            "captures": {
+                "1": { "name": "variable.language.mtp" },
+                "2": { "name": "punctuation.accessor.dot.mtp" },
+                "3": { "name": "support.variable.config.mtp" }
+            }
+        },
+
+        "module-attr": {
+            "comment": "@key - module-level metadata attribute",
+            "match": "(@[a-zA-Z_][a-zA-Z0-9_]*)",
+            "captures": {
+                "1": { "name": "entity.other.attribute-name.decorator.mtp" }
+            }
         },
 
         "operators": {

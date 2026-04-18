@@ -31,6 +31,7 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["for",       TokenKind.For],
   ["in",        TokenKind.In],
   ["return",    TokenKind.Return],
+  ["with",      TokenKind.With],
   ["and",       TokenKind.And],
   ["or",        TokenKind.Or],
   ["not",       TokenKind.Not],

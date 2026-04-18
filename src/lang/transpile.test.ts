@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { transpile, parseSource } from "./index.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { SymbolTable } from "../lsp/symbol-table.js";
+import type { MtpFunctionDefObject } from "../core/mtp-types.js";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -1861,5 +1862,178 @@ defplugin "Test" do
 end`;
     const errs = transpileErrors(src);
     expect(errs.some((e) => e.includes("$_") && e.includes("pipe"))).toBe(true);
+  });
+});
+
+// --- Phase E: local variable init expressions --------------------------------
+
+describe("Phase E: local variable init with expression", () => {
+  it("compiles int x = some_call() to a call action with to: target", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc() do
+    int x = round(42)
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"] as { vars?: string[]; actions?: unknown[] };
+    expect(fn.vars).toContain("x");
+    expect(fn.actions).toContainEqual({ round: 42, to: "$x" });
+  });
+
+  it("compiles int x = a + b to a binary action with to: target", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc(int a, int b) do
+    int result = a + b
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"] as { vars?: string[]; actions?: unknown[] };
+    expect(fn.vars).toContain("result");
+    expect(fn.actions).toContainEqual({ add: ["$a", "$b"], to: "$result" });
+  });
+
+  it("compiles int x = pipe chain to actions with final to: target", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc(int speed) do
+    int level = speed |> round()
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"] as { vars?: string[]; actions?: unknown[] };
+    expect(fn.vars).toContain("level");
+    expect(fn.actions).toContainEqual({ set: "$speed" });
+    expect(fn.actions).toContainEqual({ round: [], to: "$level" });
+  });
+
+  it("compiles complex init in on block", () => {
+    const src = `
+defplugin "Test" do
+  on :motorChange do
+    int level = round(128)
+  end
+end`;
+    const plugin = transpileOk(src);
+    const handler = plugin.events?.["motorChange"] as { vars?: string[]; actions?: unknown[] };
+    expect(handler.vars).toContain("level");
+    expect(handler.actions).toContainEqual({ round: 128, to: "$level" });
+  });
+
+  it("preserves declaration-site ordering for init actions", () => {
+    const src = `
+defplugin "Test" do
+  def myFunc(int a) do
+    log("before")
+    int x = round(a)
+    log("after")
+  end
+end`;
+    const plugin = transpileOk(src);
+    const fn = plugin.functions?.["myFunc"] as { vars?: string[]; actions?: unknown[] };
+    const actions = fn.actions as Record<string, unknown>[];
+    const logBefore = actions.findIndex((a) => a.log === "before");
+    const roundAction = actions.findIndex((a) => a.round !== undefined);
+    const logAfter = actions.findIndex((a) => a.log === "after");
+    expect(logBefore).toBeLessThan(roundAction);
+    expect(roundAction).toBeLessThan(logAfter);
+  });
+});
+
+// --- Phase F: fn inline semantics (future) -----------------------------------
+
+describe("Phase F: fn inline semantics", () => {
+  it.todo("fn bodies should inline at call sites when the optimizer is implemented", () => {
+    // FUTURE: When the optimizer is implemented, fn definitions should be
+    // inlined at call sites rather than compiled as separate functions.
+    //
+    // Given:
+    //   fn double = (int x) -> x * 2
+    //   def test(int val) do
+    //     int result = double(val)
+    //   end
+    //
+    // Current output (compiled function):
+    //   { "functions": { "double": { "args": ["x"], "actions": [{"mul":["$x",2]},{"return":"$_"}] } } }
+    //   { "test": { "actions": [{"@double": "$val", "to": "$result"}] } }
+    //
+    // Expected future output (inlined):
+    //   { "test": { "actions": [{"mul": ["$val", 2], "to": "$result"}] } }
+    //
+    // The optimizer should:
+    // 1. Detect fn definitions (pure, single-expression)
+    // 2. Substitute parameters at each call site
+    // 3. Remove the fn from the functions map if all call sites are inlined
+  });
+});
+
+// --- Phase G: event handler `with` bindings ----------------------------------
+
+describe("Phase G: on :event with bindings", () => {
+  it("parses on :event with single binding and emits args", () => {
+    const plugin = transpileOk(`
+defplugin "Test" do
+  on :speed_change with speed do
+    int level = speed
+  end
+end
+`);
+
+    expect(plugin.events).toHaveProperty("speed_change");
+    expect(plugin!.events!.speed_change).toEqual({
+      vars: ["level"],
+      args: ["speed"],
+      actions: [{ set: { $level: "$speed" } }],
+    });
+  });
+
+  it("parses on :event with multiple bindings", () => {
+    const plugin = transpileOk(`
+defplugin "Test" do
+  on :speed_change with speed, mode do
+    int s = speed
+    int m = mode
+  end
+end
+`);
+    expect(plugin!.events!).toHaveProperty("speed_change");
+    expect(plugin!.events!.speed_change).toEqual({
+      vars: ["s", "m"],
+      args: ["speed", "mode"],
+      actions: [
+        { set: { $s: "$speed" } },
+        { set: { $m: "$mode" } },
+      ],
+    });
+  });
+
+  it("on :event without with still works (no args)", () => {
+    const plugin = transpileOk(`
+defplugin "Test" do
+  on :connect do
+    int x = 1
+  end
+end
+`);
+    expect(plugin!.events!).toHaveProperty("connect");
+    expect(plugin!.events!.connect).toEqual({
+      vars: ["x"],
+      actions: [{ set: { $x: 1 } }],
+    });
+    // No args key when no bindings
+    expect(plugin!.events!.connect).not.toHaveProperty("args");
+  });
+
+  it("bindings are in scope inside the handler body", () => {
+    const plugin = transpileOk(`
+defplugin "Test" do
+  on :speed_change with speed do
+    speed + 1
+  end
+end
+`);
+    expect(plugin!.events!).toHaveProperty("speed_change");
+    expect((plugin!.events!.speed_change as MtpFunctionDefObject)!.args).toEqual(["speed"]);
   });
 });

@@ -332,12 +332,19 @@ export interface DefNode extends BaseNode {
   body: Stmt[];
 }
 
-/** `on :event do ... end` - event handler. `event` is the atom name without `:`. */
+/** `on :event [with binding, ...] do ... end` event handler. `event` is the atom name without `:`. */
 export interface OnNode extends BaseNode {
   kind: "On";
   event: string;
   eventSpan: Span;
+  bindings: EventBinding[];
   body: Stmt[];
+}
+
+/** A single named binding in an `on :event with name` clause. Type is inferred from the SDK event spec during linking. */
+export interface EventBinding {
+  name: string;
+  span: Span;
 }
 
 // --- Root ---------------------------------------------------------------------

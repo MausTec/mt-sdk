@@ -1,16 +1,15 @@
 /**
  * Function and event-handler emitters.
  *
- * Handles `def`, `fn`, and `on` blocks — extracting local declarations,
- * building init actions, and producing the JSON function-definition objects.
- * Delegates to the statement and expression emitters once those are implemented.
+ * Handles `def`, `fn`, and `on` blocks, extracting local variable names,
+ * and producing the JSON function-definition objects.
+ * Delegates to the statement and expression emitters for body compilation.
  */
 
 import type {
   DefNode,
   Expr,
   GlobalDecl,
-  LiteralExpr,
   FnNode,
   LocalDeclStmt,
   OnNode,
@@ -66,33 +65,17 @@ export type EmittedFunctionDef = MtpFunctionDefObject & { returnType?: string };
 // --- Local extraction ---------------------------------------------------------
 
 /**
- * Collect `LocalDeclStmt` nodes from a block body, returning:
- * - `vars`: flat array of local variable names (for scope allocation)
- * - `initActions`: `set` actions for any declarations that carry an initial value
+ * Collect `LocalDeclStmt` nodes from a block body, returning a flat array of
+ * local variable names (for scope allocation in the function definition).
  */
-export function extractLocals(body: Stmt[]): {
-  vars: string[];
-  initActions: MtpActionObject[];
-} {
+export function extractLocals(body: Stmt[]): string[] {
   const decls = body.filter(
     (s): s is LocalDeclStmt => s.kind === "LocalDecl",
   );
 
-  const vars = decls.map((d) =>
+  return decls.map((d) =>
     d.arraySize !== null ? `${d.name}[${d.arraySize}]` : d.name,
   );
-
-  // FUTURE (Phase E): Delegate non-literal init expressions to
-  // exprToActions() for full expression pipeline support.
-  const initActions = decls
-    .filter((d) => d.arraySize === null && d.init !== null)
-    .flatMap((d) => {
-      const val = exprToJson(d.init!);
-      if (val === null) return [];
-      return [{ set: { [`$${d.name}`]: val } } as MtpActionObject];
-    });
-
-  return { vars, initActions };
 }
 
 /**
@@ -162,7 +145,7 @@ export function emitDef(
 ): EmittedFunctionDef {
   const varInfo = buildVarInfoMap(def.body, def.params, globals);
   const blockCtx = new BlockEmitContext(localFunctions, varInfo);
-  const { vars } = extractLocals(def.body);
+  const vars = extractLocals(def.body);
   const actions = emitStatements(def.body, blockCtx);
 
   ctx.diagnostics.push(...blockCtx.diagnostics);
@@ -228,7 +211,10 @@ export function emitFn(
 
 /**
  * Emits an `on :event` handler.
- * Extracts locals for vars, then delegates body to the statement emitter.
+ *
+ * If the handler has `with` bindings, they are emitted as `args` in the
+ * function definition.
+ * The runtime maps positional event payload values to these argument names.
  */
 export function emitOnNode(
   ctx: EmitContext,
@@ -236,17 +222,32 @@ export function emitOnNode(
   localFunctions?: Map<string, string[]>,
   globals?: GlobalDecl[],
 ): MtpFunctionDefObject {
-  const varInfo = buildVarInfoMap(handler.body, undefined, globals);
+  // Convert event bindings to DefParam-shaped objects for scope resolution.
+  // Bindings are untyped in source — we default to "int" for scope registration
+  // since the runtime passes all event args as integer values. The linker
+  // (Phase H) will validate types against the SDK event spec.
+  const bindingParams = handler.bindings.map((b) => ({
+    name: b.name,
+    varType: "int" as const,
+  }));
+
+  const varInfo = buildVarInfoMap(handler.body, bindingParams, globals);
   const blockCtx = new BlockEmitContext(localFunctions, varInfo);
-  const { vars } = extractLocals(handler.body);
+  const vars = extractLocals(handler.body);
   const actions = emitStatements(handler.body, blockCtx);
 
   ctx.diagnostics.push(...blockCtx.diagnostics);
 
-  return {
+  const result: MtpFunctionDefObject = {
     vars: [...vars, ...blockCtx.getTempVars()],
     actions,
   };
+
+  if (handler.bindings.length > 0) {
+    result.args = handler.bindings.map((b) => b.name);
+  }
+
+  return result;
 }
 
 /**

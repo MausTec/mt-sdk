@@ -64,7 +64,7 @@ describe("exprToJson", () => {
 // --- extractLocals ------------------------------------------------------------
 
 describe("extractLocals", () => {
-  it("collects scalar variable names and init actions", () => {
+  it("collects scalar variable names", () => {
     const body: LocalDeclStmt[] = [
       {
         kind: "LocalDecl", varType: "int", name: "x",
@@ -77,12 +77,8 @@ describe("extractLocals", () => {
         init: lit("hello"), span: SPAN,
       },
     ];
-    const { vars, initActions } = extractLocals(body);
+    const vars = extractLocals(body);
     expect(vars).toEqual(["x", "msg"]);
-    expect(initActions).toEqual([
-      { set: { $x: 10 } },
-      { set: { $msg: "hello" } },
-    ]);
   });
 
   it("collects array declarations with size syntax", () => {
@@ -93,9 +89,8 @@ describe("extractLocals", () => {
         init: null, span: SPAN,
       },
     ];
-    const { vars, initActions } = extractLocals(body);
+    const vars = extractLocals(body);
     expect(vars).toEqual(["buf[8]"]);
-    expect(initActions).toEqual([]);
   });
 
   it("skips non-LocalDecl statements", () => {
@@ -109,7 +104,7 @@ describe("extractLocals", () => {
         kind: "Return" as const, value: null, span: SPAN,
       },
     ];
-    const { vars } = extractLocals(body);
+    const vars = extractLocals(body);
     expect(vars).toEqual(["x"]);
   });
 
@@ -121,9 +116,8 @@ describe("extractLocals", () => {
         init: null, span: SPAN,
       },
     ];
-    const { vars, initActions } = extractLocals(body);
+    const vars = extractLocals(body);
     expect(vars).toEqual(["y"]);
-    expect(initActions).toEqual([]);
   });
 });
 
@@ -221,7 +215,7 @@ describe("emitHandlers", () => {
   it("emits event handlers keyed by event name", () => {
     const ctx = new EmitContext();
     const handlers: OnNode[] = [
-      { kind: "On", event: "speedChange", eventSpan: SPAN, body: [], span: SPAN },
+      { kind: "On", event: "speedChange", eventSpan: SPAN, bindings: [], body: [], span: SPAN },
     ];
     const result = emitHandlers(ctx, handlers);
     expect(result).toHaveProperty("speedChange");
@@ -230,8 +224,8 @@ describe("emitHandlers", () => {
   it("reports error for duplicate event handlers", () => {
     const ctx = new EmitContext();
     const handlers: OnNode[] = [
-      { kind: "On", event: "speedChange", eventSpan: SPAN, body: [], span: SPAN },
-      { kind: "On", event: "speedChange", eventSpan: SPAN, body: [], span: SPAN },
+      { kind: "On", event: "speedChange", eventSpan: SPAN, bindings: [], body: [], span: SPAN },
+      { kind: "On", event: "speedChange", eventSpan: SPAN, bindings: [], body: [], span: SPAN },
     ];
     emitHandlers(ctx, handlers);
     expect(ctx.diagnostics).toContainEqual(

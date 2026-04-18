@@ -73,7 +73,7 @@ function findEnclosingBody(path: ASTPath): { stmts: Stmt[]; params: DefParam[]; 
 
     if (node.kind === "Def") return { stmts: (node as DefNode).body, params: (node as DefNode).params, kind: "Def" };
     if (node.kind === "Fn") return { stmts: [], params: (node as FnNode).params, kind: "Fn" };
-    if (node.kind === "On") return { stmts: (node as OnNode).body, params: [], kind: "On" };
+    if (node.kind === "On") return { stmts: (node as OnNode).body, params: (node as OnNode).bindings.map((b) => ({ name: b.name, varType: "int" as const, span: b.span })), kind: "On" };
   }
 
   return null;

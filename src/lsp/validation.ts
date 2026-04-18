@@ -126,7 +126,14 @@ function validateOn(
     });
   }
 
-  const ctx: BodyContext = { params: [], stmts: on.body };
+  // Treat event bindings as params for scope resolution (same as def params)
+  const bindingParams: DefParam[] = on.bindings.map((b) => ({
+    varType: "int" as const,
+    name: b.name,
+    span: b.span,
+  }));
+
+  const ctx: BodyContext = { params: bindingParams, stmts: on.body };
 
   for (const stmt of on.body) {
     validateStmt(diags, symbols, ctx, stmt);
