@@ -73,13 +73,23 @@
 
         "on-handler": {
             "comment": "on :event [with binding, ...] do",
-            "match": "\\b(on)\\s+(:\\w+)(?:\\s+(with)\\s+([\\w,\\s]+?))?(?=\\s+do\\b)",
-            "captures": {
+            "begin": "\\b(on)\\s+(:\\w+)(?:\\s+(with))?",
+            "beginCaptures": {
                 "1": { "name": "keyword.other.definition.mtp" },
                 "2": { "name": "entity.name.type.event.mtp" },
-                "3": { "name": "keyword.control.mtp" },
-                "4": { "name": "variable.parameter.mtp" }
-            }
+                "3": { "name": "keyword.control.mtp" }
+            },
+            "end": "(?=\\s*do\\b)",
+            "patterns": [
+                {
+                    "match": "\\b(\\w+)\\b",
+                    "name": "variable.parameter.mtp"
+                },
+                {
+                    "match": ",",
+                    "name": "punctuation.separator.comma.mtp"
+                }
+            ]
         },
 
         "def-keywords": {
@@ -128,7 +138,7 @@
         "atom": {
             "comment": ":symbol - event names and symbolic values. Negative lookbehind avoids matching inside strings or after word chars.",
             "match": "(?<![\\w\"']):\\w+",
-            "name": "constant.other.atom.mtp"
+            "name": "entity.name.type.event.mtp"
         },
 
         "special-vars": {
@@ -149,7 +159,7 @@
             "captures": {
                 "1": { "name": "variable.language.mtp" },
                 "2": { "name": "punctuation.accessor.dot.mtp" },
-                "3": { "name": "support.variable.config.mtp" }
+                "3": { "name": "variable.other.constant.mtp" }
             }
         },
 
@@ -159,7 +169,7 @@
             "captures": {
                 "1": { "name": "variable.language.mtp" },
                 "2": { "name": "punctuation.accessor.dot.mtp" },
-                "3": { "name": "support.variable.config.mtp" }
+                "3": { "name": "variable.other.constant.mtp" }
             }
         },
 
@@ -167,7 +177,7 @@
             "comment": "@key - module-level metadata attribute",
             "match": "(@[a-zA-Z_][a-zA-Z0-9_]*)",
             "captures": {
-                "1": { "name": "entity.other.attribute-name.decorator.mtp" }
+                "1": { "name": "variable.other.constant.mtp" }
             }
         },
 
@@ -213,9 +223,9 @@
 
         "meta-key": {
             "comment": "Known metadata keys in the defplugin and match blocks",
-            "match": "^\\s*(version|sdkVersion|description|author|license|repository|platforms|permissions|type|ble_name_prefix|ble_name|vid|pid|serial)(?=\\s)",
+            "match": "^\\s*(version|sdk_version|description|author|license|repository|platforms|permissions|type|ble_name_prefix|ble_name|vid|pid|serial)(?=\\s)",
             "captures": {
-                "1": { "name": "support.type.property-name.mtp" }
+                "1": { "name": "variable.other.constant.mtp" }
             }
         },
 
@@ -241,9 +251,9 @@
 
         "kwarg-key": {
             "comment": "key: value - constraint kwargs in config (min: max:) and match fields",
-            "match": "\\b(\\w+):\\s",
+            "match": "\\b(\\w+:)\\s",
             "captures": {
-                "1": { "name": "entity.other.attribute-name.mtp" }
+                "1": { "name": "constant.other.option.mtp" }
             }
         }
     }

@@ -205,13 +205,25 @@ function visitDef(builder: SemanticTokensBuilder, symbols: SymbolTable, def: Def
 }
 
 function visitOn(builder: SemanticTokensBuilder, symbols: SymbolTable, on: OnNode): void {
-  // Highlight the event atom (`:name`) using the eventSpan
-  const eventLen = on.eventSpan.endCol - on.eventSpan.col;
-  push(builder, on.eventSpan, eventLen, typeIndex(SemanticTokenTypes.event), 0);
+  const bindingParams: DefParam[] = on.bindings.map((b) => ({
+    name: b.name,
+    varType: "int" as const,
+    span: b.span,
+  }));
 
-  // Body statements
+  for (const b of on.bindings) {
+    push(
+      builder,
+      b.span,
+      b.name.length,
+      typeIndex(SemanticTokenTypes.parameter),
+      modBits(SemanticTokenModifiers.declaration),
+    );
+  }
+
+  // Body statements pass bindings as params so usages resolve as `parameter`
   for (const stmt of on.body) {
-    visitStmt(builder, symbols, { params: [], stmts: on.body }, stmt);
+    visitStmt(builder, symbols, { params: bindingParams, stmts: on.body }, stmt);
   }
 }
 
