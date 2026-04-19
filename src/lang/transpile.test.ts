@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { transpile, parseSource } from "./index.js";
 import type { LangDiagnostic } from "./diagnostics.js";
-import { SymbolTable } from "../lsp/symbol-table.js";
+import { SymbolTable } from "./symbol-table.js";
 import type { MtpFunctionDefObject } from "../core/mtp-types.js";
+import type { LinkerContext } from "./linker.js";
+import type { ApiDescriptor } from "@maustec/mt-runtimes";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -23,6 +25,25 @@ function transpileOk(source: string) {
   expect(errs, `Expected no errors but got:\n${errs.join("\n")}`).toHaveLength(0);
   return result.plugin;
 }
+
+/**
+ * Minimal linker context with a stub descriptor so the linker has a catalog
+ * to validate against (enables unknown-event and unknown-function warnings).
+ */
+const STUB_CONTEXT: LinkerContext = {
+  builtins: {
+    sku: "test",
+    version: "0.0.0",
+    functions: [],
+    events: [
+      { name: "connect", permission: null, payload: [] },
+      { name: "disconnect", permission: null, payload: [] },
+      { name: "speed_change", permission: null, payload: [{ name: "speed", type: "int" }] },
+      { name: "mode_set", permission: null, payload: [{ name: "mode", type: "int" }] },
+      { name: "tick", permission: null, payload: [] },
+    ],
+  } as ApiDescriptor,
+};
 
 /** Transpile source and return only the error messages. */
 function transpileErrors(source: string): string[] {
@@ -384,7 +405,7 @@ defplugin "Test" do
     int level = 0
   end
 end`;
-    const result = transpile(src);
+    const result = transpile(src, STUB_CONTEXT);
     const warn = result.diagnostics.find(
       (d) => d.level === "warning" && d.message.includes("bogus_event"),
     );
@@ -1088,7 +1109,7 @@ defplugin "Test" do
     int x = 0
   end
 end`;
-    const result = transpile(src);
+    const result = transpile(src, STUB_CONTEXT);
     const warns = warnings(result.diagnostics);
     expect(warns.some((w) => w.includes("fakeEvent") && w.includes("nknown"))).toBe(true);
   });
@@ -1101,7 +1122,7 @@ defplugin "Test" do
     int x = 0
   end
 end`;
-      const result = transpile(src);
+      const result = transpile(src, STUB_CONTEXT);
       const warns = warnings(result.diagnostics);
       expect(warns.filter((w) => w.includes(event) && w.includes("nknown"))).toHaveLength(0);
     }

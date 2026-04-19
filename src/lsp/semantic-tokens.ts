@@ -16,7 +16,7 @@ import type {
   ConfigDecl,
   GlobalDecl,
 } from "../lang/ast.js";
-import { SymbolTable } from "./symbol-table.js";
+import { SymbolTable } from "../lang/symbol-table.js";
 
 // --- Legend -------------------------------------------------------------------
 

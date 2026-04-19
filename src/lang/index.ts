@@ -35,7 +35,12 @@ export type { EmitResult } from "./emitter/index.js";
 
 import type { LangDiagnostic } from "./diagnostics.js";
 import type { PluginNode } from "./ast.js";
-import { validateSymbols } from "../lsp/validation.js";
+import { link, type LinkerContext } from "./linker.js";
+
+export type { LinkerContext, LinkedResult, PermissionAnalysis, PermissionUsage } from "./linker.js";
+export { link } from "./linker.js";
+export { SymbolTable } from "./symbol-table.js";
+export type { ResolvedFunction, ResolvedVariable, ResolvedEvent, ResolvedSymbol } from "./symbol-table.js";
 
 export interface TranspileResult {
   plugin: MtpPlugin;
@@ -66,14 +71,14 @@ export function emitPlugin(ast: PluginNode): { plugin: MtpPlugin; diagnostics: L
 
 /**
  * Parse source text and emit the JSON plugin schema in one step.
- * This is what the `build` command will call.
- * Never throws.
+ * Pass a `LinkerContext` to enable builtin/host function resolution,
+ * event validation, and permission analysis.
  */
-export function transpile(source: string): TranspileResult {
+export function transpile(source: string, context?: LinkerContext): TranspileResult {
   const { ast, diagnostics: parseDiags } = parseSource(source);
-  const validateDiags = validateSymbols(ast);
+  const { diagnostics: linkDiags } = link(ast, context);
   const { plugin, diagnostics: emitDiags } = emitPlugin(ast);
-  return { plugin, diagnostics: [...parseDiags, ...validateDiags, ...emitDiags] };
+  return { plugin, diagnostics: [...parseDiags, ...linkDiags, ...emitDiags] };
 }
 
 /**

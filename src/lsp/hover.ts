@@ -11,7 +11,7 @@ import type {
   DefParam,
 } from "../lang/ast.js";
 import type { ASTPath } from "./find-node.js";
-import { SymbolTable } from "./symbol-table.js";
+import { SymbolTable } from "../lang/symbol-table.js";
 
 // --- Operator descriptions ---------------------------------------------------
 
@@ -314,7 +314,7 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
 
 // --- Formatting helpers ------------------------------------------------------
 
-function formatFunctionHover(fn: import("./symbol-table.js").ResolvedFunction): string {
+function formatFunctionHover(fn: import("../lang/symbol-table.js").ResolvedFunction): string {
   const returnHint = fn.returnType !== null ? ` -> ${fn.returnType}` : "";
   const sourceTag = fn.source !== "plugin" ? ` (${fn.source})` : "";
   const sig = `(${fn.variant}) ${fn.name}(${formatParams(fn.params)})${returnHint}`;

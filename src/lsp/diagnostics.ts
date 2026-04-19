@@ -2,8 +2,7 @@ import type { Connection, Diagnostic, Range } from "vscode-languageserver/node.j
 import { DiagnosticSeverity } from "vscode-languageserver/node.js";
 import type { LangDiagnostic, Span } from "../lang/index.js";
 import type { DocumentStore } from "./document-store.js";
-import { validateSymbols } from "./validation.js";
-import type { ValidationDiagnostic } from "./validation.js";
+import { link } from "../lang/linker.js";
 
 function spanToRange(span: Span): Range {
   return {
@@ -14,8 +13,6 @@ function spanToRange(span: Span): Range {
 
 /**
  * Converts a Language Diagnostic to a VSCode Diagnostic object
- * @param d 
- * @returns 
  */
 function toVSCodeDiagnostic(d: LangDiagnostic): Diagnostic {
   return {
@@ -27,22 +24,14 @@ function toVSCodeDiagnostic(d: LangDiagnostic): Diagnostic {
 }
 
 /**
- * Converts a Validation Diagnostic to a VSCode diagnostic
- * @param d 
- * @returns 
- */
-function validationToVSCodeDiagnostic(d: ValidationDiagnostic): Diagnostic {
-  return {
-    severity: d.level === "error" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
-    range: spanToRange(d.span),
-    message: d.message,
-    source: "mt-sdk",
-  };
-}
-
-/**
  * Re-publish diagnostics for `uri` from its cached parse result.
  * Called after every open/change.
+ *
+ * TODO: Build a LinkerContext from the source file's @sdk_version and
+ * @platforms metadata and pass it to `link()`. The resolution strategy
+ * for descriptors is still in flux: multi-product plugins need
+ * intersection semantics, and sdk_version vs per-product host function
+ * versioning hasn't been finalized.
  */
 export function publishDiagnostics(
   connection: Connection,
@@ -54,11 +43,12 @@ export function publishDiagnostics(
 
   const diagnostics: Diagnostic[] = doc.parsed.diagnostics.map(toVSCodeDiagnostic);
 
-  // Symbol resolution validation pass
-  const validationDiags = validateSymbols(doc.parsed.ast);
-  
-  for (const d of validationDiags) {
-    diagnostics.push(validationToVSCodeDiagnostic(d));
+  // Linker pass: symbol resolution, validation, and (when context is provided)
+  // permission analysis.
+  const { diagnostics: linkDiags } = link(doc.parsed.ast);
+
+  for (const d of linkDiags) {
+    diagnostics.push(toVSCodeDiagnostic(d));
   }
 
   connection.sendDiagnostics({ uri, diagnostics });
