@@ -178,6 +178,106 @@ defplugin "Test" do
 end`;
     expect(errors(src, CTX)).toHaveLength(0);
   });
+
+  it("pipe receiver counts implicit accumulator arg", () => {
+    const src = `
+defplugin "Test" do
+  @permissions ["output:write", "output:read"]
+
+  def go() do
+    get_speed() |> set_speed()
+  end
+end`;
+    // set_speed expects 1 arg — the pipe provides it implicitly
+    expect(errors(src, CTX)).toHaveLength(0);
+  });
+
+  it("pipe receiver still errors when too few args with implicit", () => {
+    const src = `
+defplugin "Test" do
+  def go() do
+    1 |> add()
+  end
+end`;
+    // add expects 2 args, pipe provides 1 implicit, so 1 explicit needed
+    const errs = errors(src, CTX);
+    expect(errs.some((e) => e.includes("add") && e.includes("argument"))).toBe(true);
+  });
+
+  it("pipe receiver still errors when too many args with implicit", () => {
+    const src = `
+defplugin "Test" do
+  def go() do
+    1 |> add(2, 3)
+  end
+end`;
+    // add expects 2 args, pipe provides 1 implicit + 2 explicit = 3
+    const errs = errors(src, CTX);
+    expect(errs.some((e) => e.includes("add") && e.includes("argument"))).toBe(true);
+  });
+
+  // --- Explicit accumulator position in pipe receivers -----------------------
+
+  it("explicit $_ in first position counts as the pipe arg", () => {
+    const src = `
+defplugin "Test" do
+  @permissions ["output:write", "output:read"]
+
+  def go() do
+    get_speed() |> set_speed($_)
+  end
+end`;
+    // set_speed(int) — $_ fills the slot explicitly, same as implicit
+    expect(errors(src, CTX)).toHaveLength(0);
+  });
+
+  it("explicit $_ in non-first position works for arity", () => {
+    const src = `
+defplugin "Test" do
+  def go() do
+    1 |> add(2, $_)
+  end
+end`;
+    // add(int, int) — 2 explicit args, one of which is $_, no implicit added
+    // But wait — add expects 2 args and we have 2: (2, $_). That should pass.
+    expect(errors(src, CTX)).toHaveLength(0);
+  });
+
+  it("explicit $_ prevents implicit arg from being added", () => {
+    const src = `
+defplugin "Test" do
+  @permissions ["output:write", "output:read"]
+
+  def go() do
+    get_speed() |> set_speed($_, 99)
+  end
+end`;
+    // set_speed expects 1 arg, but $_ + 99 = 2 explicit args
+    const errs = errors(src, CTX);
+    expect(errs.some((e) => e.includes("set_speed") && e.includes("argument"))).toBe(true);
+  });
+
+  it("errors when multiple $_ appear in a single pipe receiver", () => {
+    const src = `
+defplugin "Test" do
+  def go() do
+    1 |> add($_, $_)
+  end
+end`;
+    const errs = errors(src, CTX);
+    expect(errs.some((e) => e.includes("$_") && e.includes("once"))).toBe(true);
+  });
+
+  it("$_ in pipe receiver is not double-counted for arity", () => {
+    const src = `
+defplugin "Test" do
+  def go() do
+    1 |> add($_, 2)
+  end
+end`;
+    // add(int, int) — $_ + 2 = 2 args. No implicit added since $_ is explicit.
+    expect(errors(src, CTX)).toHaveLength(0);
+  });
 });
 
 describe("linker: event validation", () => {

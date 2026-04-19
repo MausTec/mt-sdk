@@ -137,14 +137,18 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
     }
 
     case "Accumulator": {
-      const carriedType = resolvePipeCarriedType(path);
-      const typeHint = carriedType !== null ? carriedType : "unknown";
+      const carried = resolvePipeCarriedInfo(path, symbols);
+      const typeHint = carried?.type ?? "unknown";
+      const sourceHint = carried ? ` from \`${carried.sourceLabel}\`` : "";
 
-      return mkHover(
-        `\`\`\`mtp\n(pipe accumulator) ${typeHint} $_\n\`\`\`\n\n` +
-        "The result carried from the previous pipe step. The next function call receives this as arg 0 or wherever `$_` appears.",
-        node.span,
-      );
+      let md = `\`\`\`mtp\n(pipe accumulator) ${typeHint} $_\n\`\`\`\n\n` +
+        `Carries the result${sourceHint} into the next pipe step.`;
+
+      if (carried?.sourceFn?.docs?.length) {
+        md += "\n\n---\n\n" + carried.sourceFn.docs.join("\n");
+      }
+
+      return mkHover(md, node.span);
     }
 
     case "ErrorCode":
@@ -182,8 +186,21 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
 
     case "Call": {
       const fn = symbols.resolveFunction(node.name);
+
+      // Check if this call is a pipe receiver
+      const pipeParent = path.length >= 2 ? path[path.length - 2] : undefined;
+      const isPipeReceiver = pipeParent !== undefined && pipeParent.kind === "Pipe";
+
       if (fn !== undefined) {
-        return mkHover(formatFunctionHover(fn), node.span);
+        const baseMd = formatFunctionHover(fn);
+
+        if (isPipeReceiver) {
+          const carried = resolvePipeCarriedInfo(path, symbols);
+          const resolvedSig = formatResolvedPipeSig(fn, node.args, carried);
+          return mkHover(baseMd + resolvedSig, node.span);
+        }
+
+        return mkHover(baseMd, node.span);
       }
 
       // Unresolved — may be a builtin or runtime function not yet registered.
@@ -213,7 +230,7 @@ export function getHoverContent(ast: PluginNode, path: ASTPath, line: number, co
 
     case "ConfigDecl":
       return mkHover(
-        `\`\`\`mtp\n(config) ${node.varType} @${node.name}\n\`\`\`` +
+        `\`\`\`mtp\n(config) ${node.varType} config.${node.name}\n\`\`\`` +
         formatDocs(node.label !== null ? [node.label] : []),
         node.span,
       );
@@ -347,43 +364,92 @@ function formatPipeStepHover(
   }
 
   const step = node.steps[stepIndex]!;
-  const carriedLabel = step.carriedType !== "unknown" ? step.carriedType : "?";
-
-  // Describe the source: head expression or previous step's function.
-  let fromLabel: string;
-  
-  if (stepIndex === 0) {
-    const h = node.head;
-    fromLabel = h.kind === "Identifier" ? h.name
-      : h.kind === "Call" ? `${h.name}()`
-      : h.kind === "Literal" ? String(h.value)
-      : "expr";
-  } else {
-    fromLabel = `${node.steps[stepIndex - 1]!.call.name}()`;
-  }
+  const carried = buildCarriedInfo(node, stepIndex, symbols);
+  const typeLabel = carried.type ?? "?";
 
   // Describe where the carried value lands in the next call.
   const hasExplicitAccumulator = step.call.args.some(
     a => a.kind === "Accumulator",
   );
-
   const intoHint = hasExplicitAccumulator ? "into `$_`" : "as arg 0";
 
-  const md =
-    `**\`|>\`** pipe — carries \`${carriedLabel}\` from \`${fromLabel}\` ${intoHint} of \`${step.call.name}()\``;
+  let md =
+    `**\`|>\`** pipe — carries \`${typeLabel}\` from \`${carried.sourceLabel}\` ${intoHint} of \`${step.call.name}()\``;
+
+  if (carried.sourceFn?.docs?.length) {
+    md += "\n\n---\n\n" + carried.sourceFn.docs.join("\n");
+  }
 
   return mkHover(md, node.span);
+}
+
+/**
+ * Format a resolved pipe call signature showing where $_ is substituted.
+ *
+ * When the receiver uses explicit $_, shows the signature as-written.
+ * When implicit (no $_ in args), shows $_ prepended as the first arg.
+ */
+function formatResolvedPipeSig(
+  fn: import("../lang/symbol-table.js").ResolvedFunction,
+  callArgs: readonly import("../lang/ast.js").Expr[],
+  carried: PipeCarriedInfo | null,
+): string {
+  const carriedType = carried?.type ?? "?";
+  const hasExplicitAccumulator = callArgs.some(a => a.kind === "Accumulator");
+
+  // Build the resolved arg list with $_ shown in its position
+  const resolvedParts: string[] = [];
+
+  if (hasExplicitAccumulator) {
+    // Show each arg, substituting $_ with its carried type
+    for (let i = 0; i < callArgs.length; i++) {
+      const arg = callArgs[i]!;
+
+      if (arg.kind === "Accumulator") {
+        resolvedParts.push(`${carriedType} $_`);
+      } else {
+        // Use the param type from the function signature if available
+        const param = fn.params[i];
+        resolvedParts.push(param ? `${param.varType} ${param.name}` : "?");
+      }
+    }
+  } else {
+    // Implicit: $_ is prepended as arg 0
+    resolvedParts.push(`${carriedType} $_`);
+
+    for (let i = 1; i < fn.params.length; i++) {
+      const param = fn.params[i]!;
+      resolvedParts.push(`${param.varType} ${param.name}`);
+    }
+  }
+
+  const resolvedSig = `${fn.name}(${resolvedParts.join(", ")})`;
+  const returnHint = fn.returnType !== null ? ` -> ${fn.returnType}` : "";
+
+  return `\n\n---\n\n*Pipe-resolved call:*\n\`\`\`mtp\n${resolvedSig}${returnHint}\n\`\`\``;
 }
 
 // --- Pipe carried-type resolution --------------------------------------------
 
 /**
- * Walk backward through the ASTPath to find whether the current node sits
- * inside a PipeStep, and if so, return the carriedType for that step.
- *
- * Returns `null` when no pipe context is found or the type is unknown.
+ * Describes the value flowing through a pipe at a given point.
  */
-function resolvePipeCarriedType(path: ASTPath): string | null {
+interface PipeCarriedInfo {
+  /** Inferred type of the carried value, or null if unknown. */
+  type: string | null;
+  /** Human-readable label for the source expression (e.g. "get_speed()"). */
+  sourceLabel: string;
+  /** Resolved function info for the source, if it was a function call. */
+  sourceFn: import("../lang/symbol-table.js").ResolvedFunction | undefined;
+}
+
+/**
+ * Walk backward through the ASTPath to find whether the current node sits
+ * inside a PipeStep, and if so, return rich carried info for that step.
+ *
+ * Returns `null` when no pipe context is found.
+ */
+function resolvePipeCarriedInfo(path: ASTPath, symbols: SymbolTable): PipeCarriedInfo | null {
   for (let i = path.length - 1; i >= 0; i--) {
     const node = path[i]!;
 
@@ -393,14 +459,79 @@ function resolvePipeCarriedType(path: ASTPath): string | null {
       const child = i + 1 < path.length ? path[i + 1]! : null;
       if (child === null || child.kind !== "Call") return null;
 
-      for (const step of node.steps) {
-        if (step.call === child) {
-          return step.carriedType !== "unknown" ? step.carriedType : null;
+      for (let s = 0; s < node.steps.length; s++) {
+        if (node.steps[s]!.call === child) {
+          return buildCarriedInfo(node, s, symbols);
         }
       }
       return null;
     }
   }
-  
+
   return null;
+}
+
+/**
+ * Build PipeCarriedInfo for a given step index in a PipeExpr.
+ */
+function buildCarriedInfo(
+  pipe: import("../lang/ast.js").PipeExpr,
+  stepIndex: number,
+  symbols: SymbolTable,
+): PipeCarriedInfo {
+  if (stepIndex === 0) {
+    // Source is the pipe head expression
+    const h = pipe.head;
+
+    if (h.kind === "Call") {
+      const fn = symbols.resolveFunction(h.name);
+      
+      return {
+        type: fn?.returnType ?? null,
+        sourceLabel: `${h.name}()`,
+        sourceFn: fn,
+      };
+    }
+
+    if (h.kind === "Identifier") {
+      const fn = symbols.resolveFunction(h.name);
+      
+      return { 
+        type: fn?.returnType ?? null, 
+        sourceLabel: h.name, 
+        sourceFn: fn 
+      };
+    }
+
+
+    if (h.kind === "Literal") {
+      const t = typeof h.value === "number"
+        ? (Number.isInteger(h.value) ? "int" : "float")
+        : typeof h.value === "string" ? "string"
+        : typeof h.value === "boolean" ? "bool"
+        : null;
+      
+      return { 
+        type: t, 
+        sourceLabel: String(h.value), 
+        sourceFn: undefined 
+      };
+    }
+
+    return { 
+      type: null, 
+      sourceLabel: "expr", 
+      sourceFn: undefined 
+    };
+  }
+
+  // Source is the previous step's function call
+  const prevCall = pipe.steps[stepIndex - 1]!.call;
+  const fn = symbols.resolveFunction(prevCall.name);
+  
+  return {
+    type: fn?.returnType ?? null,
+    sourceLabel: `${prevCall.name}()`,
+    sourceFn: fn,
+  };
 }
