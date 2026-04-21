@@ -19,7 +19,7 @@ import type { BlockEmitContext } from "./context.js";
  * Subset of {@link Expr} that can be represented as a bare {@link MtpValue}.
  *
  * Notably excludes:
- * - ConfigRef  -- compiles to a `getPluginConfig` action, not a value
+ * - ConfigRef  -- compiles to a `get_plugin_config` action, not a value
  * - Binary, Unary, Call, Pipe, Index -- require action sequences
  */
 export type SimpleExpr =
@@ -136,7 +136,7 @@ export function exprToActions(
 
   switch (expr.kind) {
     case "ConfigRef":
-      return [withTarget(actionObj("getPluginConfig", expr.name), target)];
+      return [withTarget(actionObj("get_plugin_config", expr.name), target)];
 
     case "MetaRef":
       ctx.error(`Plugin metadata introspection (\`meta.${expr.name}\`) is not yet supported by the runtime`, expr.span);
@@ -209,9 +209,9 @@ export function exprToActions(
  * Emit a function call expression.
  *
  * All calls use **positional** argument form in the JSON output:
- * - 0 args → `[]`
- * - 1 arg  → the value directly (scalar shorthand)
- * - 2+ args → array of values
+ * - 0 args -> `[]`
+ * - 1 arg  -> the value directly (scalar shorthand)
+ * - 2+ args -> array of values
  *
  * Named args in the source language are compiled to positional by the
  * compiler using the function's declared parameter order.
@@ -312,7 +312,7 @@ function emitPipe(
 // --- Index emitter (getbyte) --------------------------------------------------
 
 /**
- * Emit an index access: `name[expr]` → `{ "getbyte": [array, index], to? }`.
+ * Emit an index access: `name[expr]` -> `{ "getbyte": [array, index], to? }`.
  *
  * The target (array) and index are resolved as values. Complex indices
  * are pre-evaluated to temps.
