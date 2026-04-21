@@ -110,7 +110,7 @@ describe("exprToCondition", () => {
     it("@config == literal pre-evaluates config to temp", () => {
       const ctx = new BlockEmitContext();
       const result = exprToCondition(binary("==", configRef("enabled"), lit(true)), ctx)!;
-      expect(result.prereqs).toEqual([{ "getPluginConfig": "enabled", "to": "$__t0" }]);
+      expect(result.prereqs).toEqual([{ "get_plugin_config": "enabled", "to": "$__t0" }]);
       expect(result.condition).toEqual({ eq: ["$__t0", true] });
     });
 
@@ -285,7 +285,7 @@ describe("exprToCondition", () => {
     it("@config pre-evaluates to temp then checks neq 0", () => {
       const ctx = new BlockEmitContext();
       const result = exprToCondition(configRef("enabled"), ctx)!;
-      expect(result.prereqs).toEqual([{ "getPluginConfig": "enabled", "to": "$__t0" }]);
+      expect(result.prereqs).toEqual([{ "get_plugin_config": "enabled", "to": "$__t0" }]);
       expect(result.condition).toEqual({ neq: ["$__t0", 0] });
     });
 

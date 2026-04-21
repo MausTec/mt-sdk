@@ -91,20 +91,20 @@ describe("exprToActions", () => {
   });
 
   // --- Case 1: ConfigRef with target ---
-  it("ConfigRef with target -> getPluginConfig + to", () => {
+  it("ConfigRef with target -> get_plugin_config + to", () => {
     const ctx = new BlockEmitContext();
     const expr: Expr = { kind: "ConfigRef", name: "maxLevel", span: SPAN };
     expect(exprToActions(expr, ctx, "$x")).toEqual([
-      { getPluginConfig: "maxLevel", to: "$x" },
+      { get_plugin_config: "maxLevel", to: "$x" },
     ]);
   });
 
   // --- Case 2: ConfigRef without target (flows to $_) ---
-  it("ConfigRef without target -> getPluginConfig (no to)", () => {
+  it("ConfigRef without target -> get_plugin_config (no to)", () => {
     const ctx = new BlockEmitContext();
     const expr: Expr = { kind: "ConfigRef", name: "maxLevel", span: SPAN };
     expect(exprToActions(expr, ctx)).toEqual([
-      { getPluginConfig: "maxLevel" },
+      { get_plugin_config: "maxLevel" },
     ]);
   });
 
@@ -221,7 +221,7 @@ describe("exprToActions", () => {
       span: SPAN,
     };
     expect(exprToActions(expr, ctx, "$result")).toEqual([
-      { getPluginConfig: "maxLevel" },
+      { get_plugin_config: "maxLevel" },
       { mul: ["$_", "$speed"], to: "$result" },
     ]);
   });
@@ -237,7 +237,7 @@ describe("exprToActions", () => {
       span: SPAN,
     };
     expect(exprToActions(expr, ctx, "$result")).toEqual([
-      { getPluginConfig: "maxLevel", to: "$__t0" },
+      { get_plugin_config: "maxLevel", to: "$__t0" },
       { mul: ["$__t0", "$speed"], to: "$result" },
     ]);
     expect(ctx.getTempVars()).toEqual(["__t0"]);
@@ -288,8 +288,8 @@ describe("exprToActions", () => {
         ], span: SPAN,
       };
       expect(exprToActions(expr, ctx)).toEqual([
-        { getPluginConfig: "a", to: "$__t0" },
-        { getPluginConfig: "b" },
+        { get_plugin_config: "a", to: "$__t0" },
+        { get_plugin_config: "b" },
         { someHost: ["$__t0", "$_"] },
       ]);
     });
@@ -386,8 +386,8 @@ describe("exprToActions", () => {
         ], span: SPAN,
       };
       expect(exprToActions(expr, ctx)).toEqual([
-        { getPluginConfig: "x", to: "$__t0" },
-        { getPluginConfig: "y" },
+        { get_plugin_config: "x", to: "$__t0" },
+        { get_plugin_config: "y" },
         { "@blend": ["$__t0", "$_"] },
       ]);
     });
