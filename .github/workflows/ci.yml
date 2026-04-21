@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # mt-sdk depends on mt-runtimes via file:../mt-runtimes,
+      # so both repos are checked out at the expected relative paths.
+      - name: Check out mt-runtimes
+        uses: actions/checkout@v4
+        with:
+          repository: maustec/mt-runtimes
+          path: mt-runtimes
+
+      - name: Check out mt-sdk
+        uses: actions/checkout@v4
+        with:
+          path: mt-sdk
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: mt-sdk/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            mt-sdk/package-lock.json
+            mt-runtimes/package-lock.json
+
+      - name: Install mt-runtimes dependencies
+        working-directory: mt-runtimes
+        run: npm ci
+
+      - name: Install mt-sdk dependencies
+        working-directory: mt-sdk
+        run: npm ci
+
+      - name: Run tests
+        working-directory: mt-sdk
+        run: npm test
