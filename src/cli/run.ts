@@ -61,6 +61,11 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       await buildCommand(argv.slice(1));
       break;
     }
+    case "simulate": {
+      const { simulateCommand } = await import("./commands/simulate.js");
+      await simulateCommand(argv.slice(1));
+      break;
+    }
     default:
       console.log(`Command "${command}" is not yet implemented.`);
       process.exitCode = 1;
