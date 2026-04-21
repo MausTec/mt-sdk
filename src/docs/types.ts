@@ -2,7 +2,7 @@
  * Doc registry entry types.
  *
  * These types define the structured documentation format consumed by:
- * - MCP server (returns markdown to AI agents)
+ * - MCP server
  * - LSP hover/completion (returns summary + first example)
  * - VSCode webview (renders searchable reference)
  * - Docs site generator (produces Starlight markdown)
@@ -37,10 +37,10 @@ export interface DocEntry {
   /** Organizational category. */
   category: DocCategory;
 
-  /** One-line summary — used in hover tooltips and completion details. */
+  /** One-line summary used in hover tooltips and completion details. */
   summary: string;
 
-  /** Full markdown body — used in MCP responses, webview, and docs site. */
+  /** Full markdown body used in MCP responses, webview, and docs site. */
   body: string;
 
   /** Optional code examples shown after the body. */

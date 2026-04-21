@@ -1,10 +1,14 @@
 /**
- * Doc registry — single source of truth for all SDK documentation.
+ * Maus-Tec SDK Documentation Registry
+ * 
+ * The documentation registry is a single source of truth for pugin/app development
+ * documentation, which is then recycled by other tools to produce structured
+ * documentation as needed throughout the development workflow.
  *
  * Content modules register entries here. Consumers (MCP, LSP, webview, docs site)
  * query the registry by ID or category.
  *
- * Content is NOT populated in this file — see individual topic modules
+ * Content is NOT populated in this file, pleaes see individual topic modules
  * in src/docs/language/, src/docs/builtins/, etc.
  */
 

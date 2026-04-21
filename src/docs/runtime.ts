@@ -15,6 +15,7 @@ import type {
 
 /**
  * Render a host function descriptor as a markdown section.
+ * TODO: Ensure this has been updated to match the latest arg parsnig/variadic action of the runtime.
  */
 export function renderFunctionDoc(fn: HostFunctionDescriptor): string {
   const lines: string[] = [];
@@ -185,11 +186,11 @@ export function renderBuiltinsPage(api: ApiDescriptor): string {
   const lines: string[] = [];
 
   lines.push("---");
-  lines.push(`title: "mt-actions Builtins v${api.version}"`);
-  lines.push(`description: "Core builtin operations available on all platforms running mt-actions ${api.version}+"`);
+  lines.push(`title: "Plugin Runtime Builtins v${api.version}"`);
+  lines.push(`description: "Core builtin operations available on all platforms running Runtime ${api.version}+"`);
   lines.push("---");
   lines.push("");
-  lines.push(`These operations are available on **every** platform that ships mt-actions ${api.version} or later.`);
+  lines.push(`These operations are available on **every** platform that ships Runtime ${api.version} or later.`);
   lines.push("");
   lines.push(renderApiPage(api));
 

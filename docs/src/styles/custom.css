@@ -1,0 +1,15 @@
+/* MTP SDK docs custom styles */
+
+:root {
+    --sl-color-accent-low: #1a2332;
+    --sl-color-accent: #00b4d8;
+    --sl-color-accent-high: #90e0ef;
+    --sl-color-white: #e8eaed;
+    --sl-color-gray-1: #c4c8cc;
+    --sl-color-gray-2: #8b929a;
+    --sl-color-gray-3: #545a63;
+    --sl-color-gray-4: #343a42;
+    --sl-color-gray-5: #23282f;
+    --sl-color-gray-6: #181c22;
+    --sl-color-black: #12151a;
+}
