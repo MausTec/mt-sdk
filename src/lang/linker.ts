@@ -249,9 +249,20 @@ function validateOn(
         const expected = resolvedEvent.payload.length;
         const got = on.bindings.length;
 
+        // Span covers the first excess binding through the last binding,
+        // pointing the user directly at what needs to be removed.
+        const firstExcess = on.bindings[expected]!;
+        const lastExcess = on.bindings[got - 1]!;
+        const excessSpan: Span = {
+          line: firstExcess.span.line,
+          col: firstExcess.span.col,
+          endLine: lastExcess.span.endLine,
+          endCol: lastExcess.span.endCol,
+        };
+
         diags.push(langError(
           `Event \`${on.event}\` provides ${expected} payload field${expected !== 1 ? "s" : ""} but ${got} binding${got !== 1 ? "s" : ""} were declared`,
-          on.eventSpan,
+          excessSpan,
         ));
       }
     }
