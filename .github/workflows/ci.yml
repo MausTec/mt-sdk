@@ -38,6 +38,10 @@ jobs:
         working-directory: mt-runtimes
         run: npm ci
 
+      - name: Build mt-runtimes
+        working-directory: mt-runtimes
+        run: npm run build
+
       - name: Install mt-sdk dependencies
         working-directory: mt-sdk
         run: npm ci
