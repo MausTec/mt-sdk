@@ -10,7 +10,7 @@ import type {
   Stmt,
 } from "./ast.js";
 import { SymbolTable, type ResolvedFunction } from "./symbol-table.js";
-import { resolveRuntimeBundle, ResolutionError } from "@maustec/mt-runtimes";
+import { resolveRuntimeBundle, ResolutionError, parsePlatformEntry } from "@maustec/mt-runtimes";
 import type { RuntimeBundle } from "@maustec/mt-runtimes";
 
 // --- Public types ------------------------------------------------------------
@@ -118,7 +118,40 @@ export function link(ast: PluginNode, bundle?: RuntimeBundle | null): LinkedResu
       resolved = resolveASTBundle(ast);
     } catch (e) {
       if (e instanceof ResolutionError) {
-        diagnostics.push(langError(e.message, ast.span));
+        // Build a span map: raw platform string -> its literal span in the AST.
+        // Used to target each error detail at the specific failing entry.
+        
+        const platformEntrySpans = new Map<string, Span>();
+        let platformsFieldSpan: Span | undefined;
+
+        for (const field of ast.metadata) {
+          if (field.key === "platforms" && Array.isArray(field.value)) {
+            platformsFieldSpan = field.span;
+
+            for (const expr of field.value) {
+              if (expr.kind === "Literal" && typeof expr.value === "string") {
+                platformEntrySpans.set(expr.value, expr.span);
+              }
+            }
+          }
+        }
+
+        const fallbackSpan = platformsFieldSpan ?? ast.span;
+
+        for (const detail of e.details) {
+          let span = fallbackSpan;
+
+          for (const [raw, entrySpan] of platformEntrySpans) {
+            const id = parsePlatformEntry(raw).identifier.replace(/^@/, "").toUpperCase();
+
+            if (detail.toUpperCase().includes(id)) {
+              span = entrySpan;
+              break;
+            }
+          }
+
+          diagnostics.push(langError(detail, span));
+        }
       }
       // Continue with no bundle, warn against unknown items.
     }
