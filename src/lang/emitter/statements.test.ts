@@ -123,7 +123,7 @@ describe("emitStatements", () => {
       ]);
     });
 
-    it("emits getPluginConfig with to for ConfigRef", () => {
+    it("emits get_plugin_config with to for ConfigRef", () => {
       const ctx = new BlockEmitContext();
       const stmts: Stmt[] = [{
         kind: "AssignLocal", name: "maxLevel", nameSpan: SPAN,
@@ -131,7 +131,7 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { getPluginConfig: "maxLevel", to: "$maxLevel" },
+        { get_plugin_config: "maxLevel", to: "$maxLevel" },
       ]);
     });
   });
@@ -290,7 +290,7 @@ describe("emitStatements", () => {
       ];
 
       expect(emitStatements(stmts, ctx)).toEqual([
-        { getPluginConfig: "maxLevel", to: "$maxLevel" },
+        { get_plugin_config: "maxLevel", to: "$maxLevel" },
         { mul: ["$arg", "$maxLevel"], to: "$speed" },
         { div: ["$speed", 255], to: "$speed" },
         { return: "$speed" },
