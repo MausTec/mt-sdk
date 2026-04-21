@@ -35,10 +35,10 @@ export type { EmitResult } from "./emitter/index.js";
 
 import type { LangDiagnostic } from "./diagnostics.js";
 import type { PluginNode } from "./ast.js";
-import { link, type LinkerContext } from "./linker.js";
+import { link } from "./linker.js";
 
 export type { LinkerContext, LinkedResult, PermissionAnalysis, PermissionUsage } from "./linker.js";
-export { link } from "./linker.js";
+export { link, resolveASTBundle } from "./linker.js";
 export { SymbolTable } from "./symbol-table.js";
 export type { ResolvedFunction, ResolvedVariable, ResolvedEvent, ResolvedSymbol } from "./symbol-table.js";
 
@@ -70,13 +70,12 @@ export function emitPlugin(ast: PluginNode): { plugin: MtpPlugin; diagnostics: L
 }
 
 /**
- * Parse source text and emit the JSON plugin schema in one step.
- * Pass a `LinkerContext` to enable builtin/host function resolution,
- * event validation, and permission analysis.
+ * Parse `.mtp` source text, link against its declared runtime API,
+ * and emit the JSON plugin schema in one step.
  */
-export function transpile(source: string, context?: LinkerContext): TranspileResult {
+export function transpile(source: string): TranspileResult {
   const { ast, diagnostics: parseDiags } = parseSource(source);
-  const { diagnostics: linkDiags } = link(ast, context);
+  const { diagnostics: linkDiags } = link(ast);
   const { plugin, diagnostics: emitDiags } = emitPlugin(ast);
   return { plugin, diagnostics: [...parseDiags, ...linkDiags, ...emitDiags] };
 }

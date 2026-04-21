@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { link, type LinkerContext } from "./linker.js";
+import { link } from "./linker.js";
 import { parseSource } from "./index.js";
-import type { ApiDescriptor } from "@maustec/mt-runtimes";
+import type { ApiDescriptor, RuntimeBundle } from "@maustec/mt-runtimes";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -14,12 +14,12 @@ function parse(src: string) {
   return ast;
 }
 
-function errors(src: string, context?: LinkerContext): string[] {
+function errors(src: string, context?: RuntimeBundle): string[] {
   const { diagnostics } = link(parse(src), context);
   return diagnostics.filter((d) => d.level === "error").map((d) => d.message);
 }
 
-function warnings(src: string, context?: LinkerContext): string[] {
+function warnings(src: string, context?: RuntimeBundle): string[] {
   const { diagnostics } = link(parse(src), context);
   return diagnostics.filter((d) => d.level === "warning").map((d) => d.message);
 }
@@ -27,7 +27,7 @@ function warnings(src: string, context?: LinkerContext): string[] {
 // --- Stub descriptors -------------------------------------------------------
 
 const BUILTINS: ApiDescriptor = {
-  sku: "mt-actions",
+  product: "mt-actions",
   version: "1.1.0",
   functions: [
     { name: "add", permission: null, args: [{ name: "a", type: "int" }, { name: "b", type: "int" }], returns: { type: "int" } },
@@ -38,6 +38,7 @@ const BUILTINS: ApiDescriptor = {
 };
 
 const PLATFORM: ApiDescriptor = {
+  product: "edge-o-matic",
   sku: "EOM3K",
   version: "2.0.0",
   functions: [
@@ -54,7 +55,7 @@ const PLATFORM: ApiDescriptor = {
   ],
 };
 
-const CTX: LinkerContext = { builtins: BUILTINS, platformApis: [PLATFORM] };
+const CTX: RuntimeBundle = { builtins: BUILTINS, platformApi: PLATFORM, resolvedPlatforms: [] };
 
 // --- Tests ------------------------------------------------------------------
 

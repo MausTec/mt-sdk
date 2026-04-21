@@ -28,7 +28,7 @@ export function apiCheck(
         tier: "api",
         level: "warning",
         path: `events.${evName}`,
-        message: `Event "${evName}" is not defined in ${manifest.sku} v${manifest.version}`,
+        message: `Event "${evName}" is not defined in ${manifest.product} v${manifest.version}`,
       });
       continue;
     }
@@ -51,7 +51,7 @@ export function apiCheck(
       diagnostics.push({
         tier: "api",
         level: "warning",
-        message: `Host function "${fnName}" is not defined in ${manifest.sku} v${manifest.version}`,
+        message: `Host function "${fnName}" is not defined in ${manifest.product} v${manifest.version}`,
       });
       continue;
     }

@@ -26,12 +26,6 @@ function toVSCodeDiagnostic(d: LangDiagnostic): Diagnostic {
 /**
  * Re-publish diagnostics for `uri` from its cached parse result.
  * Called after every open/change.
- *
- * TODO: Build a LinkerContext from the source file's @sdk_version and
- * @platforms metadata and pass it to `link()`. The resolution strategy
- * for descriptors is still in flux: multi-product plugins need
- * intersection semantics, and sdk_version vs per-product host function
- * versioning hasn't been finalized.
  */
 export function publishDiagnostics(
   connection: Connection,

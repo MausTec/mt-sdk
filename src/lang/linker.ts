@@ -10,20 +10,52 @@ import type {
   Stmt,
 } from "./ast.js";
 import { SymbolTable, type ResolvedFunction } from "./symbol-table.js";
-import type { ApiDescriptor } from "@maustec/mt-runtimes";
+import { resolveRuntimeBundle, ResolutionError } from "@maustec/mt-runtimes";
+import type { RuntimeBundle } from "@maustec/mt-runtimes";
 
 // --- Public types ------------------------------------------------------------
 
 /**
- * External context provided to the linker. When omitted, the linker runs in
- * degraded mode: plugin-defined symbols are resolved but builtins and host
- * functions produce "unknown function" warnings rather than errors.
+ * @deprecated Use RuntimeBundle from @maustec/mt-runtimes instead.
+ * LinkerContext is kept as an alias for backwards compatibility.
  */
-export interface LinkerContext {
-  /** mt-actions core builtins descriptor (e.g. from getMtActionsDescriptor()). */
-  builtins?: ApiDescriptor;
-  /** Per-SKU host function descriptors (one per resolved platform SKU). */
-  platformApis?: ApiDescriptor[];
+export type LinkerContext = RuntimeBundle;
+
+/**
+ * Reads @sdk_version and @platforms metadata from an already-parsed AST and
+ * resolves them into a RuntimeBundle via mt-runtimes.
+ *
+ * Exported so that the LSP hover provider, MCP server, and other tooling can
+ * obtain the resolved bundle separately without re-running the full linker.
+ *
+ * @throws {ResolutionError} if a platform constraint cannot be satisfied.
+ * Returns null when the AST has neither @sdk_version nor @platforms declared
+ * (degraded mode — no catalog loaded).
+ */
+export function resolveASTBundle(ast: PluginNode): RuntimeBundle | null {
+  let sdkVersion: string | null = null;
+  const platforms: string[] = [];
+
+  for (const field of ast.metadata) {
+    if (field.key === "sdk_version" && typeof field.value === "string") {
+      sdkVersion = field.value;
+    }
+    if (field.key === "platforms" && Array.isArray(field.value)) {
+      for (const entry of field.value) {
+        if (entry.kind === "Literal" && typeof entry.value === "string") {
+          platforms.push(entry.value);
+        }
+      }
+    }
+  }
+
+  // Only resolve if the plugin explicitly declares @sdk_version or @platforms.
+  // Plugins without either field stay in degraded mode (no catalog loaded).
+  if (sdkVersion === null && platforms.length === 0) {
+    return null;
+  }
+
+  return resolveRuntimeBundle({ sdkVersion, platforms });
 }
 
 /** A usage site for a required permission. */
@@ -70,22 +102,40 @@ interface BodyContext {
  * - Event name resolution from descriptors (no more hardcoded KNOWN_EVENTS)
  * - Function argument count validation for resolved functions
  * - Permission tracking with missing/unused permission diagnostics
+ *
+ * When `bundle` is omitted the linker calls `resolveASTBundle()` internally,
+ * reading @sdk_version and @platforms from the AST metadata. Resolution errors
+ * are emitted as LangDiagnostics rather than thrown. Pass an explicit bundle to
+ * override (useful in tests and for callers that have already resolved the bundle).
  */
-export function link(ast: PluginNode, context?: LinkerContext): LinkedResult {
+export function link(ast: PluginNode, bundle?: RuntimeBundle | null): LinkedResult {
   const diagnostics: LangDiagnostic[] = [];
+
+  // Auto-resolve the runtime bundle from AST metadata when not provided.
+  let resolved: RuntimeBundle | null | undefined = bundle;
+  if (resolved === undefined) {
+    try {
+      resolved = resolveASTBundle(ast);
+    } catch (e) {
+      if (e instanceof ResolutionError) {
+        diagnostics.push(langError(e.message, ast.span));
+      }
+      // Continue with no bundle, warn against unknown items.
+    }
+  }
+
   const symbols = SymbolTable.fromAST(ast);
 
   // --- Register API descriptors ---
-  if (context?.builtins) {
-    const origin = `${context.builtins.sku}/${context.builtins.version}`;
-    symbols.registerDescriptor(context.builtins, "builtin", origin);
+  if (resolved?.builtins) {
+    const origin = `${resolved.builtins.product}/${resolved.builtins.version}`;
+    symbols.registerDescriptor(resolved.builtins, "builtin", origin);
   }
 
-  if (context?.platformApis) {
-    for (const api of context.platformApis) {
-      const origin = `${api.sku}/${api.version}`;
-      symbols.registerDescriptor(api, "runtime", origin);
-    }
+  if (resolved?.platformApi) {
+    const api = resolved.platformApi;
+    const origin = `${api.product}/${api.version}`;
+    symbols.registerDescriptor(api, "runtime", origin);
   }
 
   // --- Permission tracking setup ---

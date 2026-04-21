@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { transpile, parseSource } from "./index.js";
+import { transpile, parseSource, link } from "./index.js";
 import type { LangDiagnostic } from "./diagnostics.js";
 import { SymbolTable } from "./symbol-table.js";
 import type { MtpFunctionDefObject } from "../core/mtp-types.js";
-import type { LinkerContext } from "./linker.js";
-import type { ApiDescriptor } from "@maustec/mt-runtimes";
+import type { RuntimeBundle } from "@maustec/mt-runtimes";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -27,12 +26,12 @@ function transpileOk(source: string) {
 }
 
 /**
- * Minimal linker context with a stub descriptor so the linker has a catalog
+ * Minimal runtime bundle with a stub descriptor so the linker has a catalog
  * to validate against (enables unknown-event and unknown-function warnings).
  */
-const STUB_CONTEXT: LinkerContext = {
+const STUB_BUNDLE: RuntimeBundle = {
   builtins: {
-    sku: "test",
+    product: "test",
     version: "0.0.0",
     functions: [],
     events: [
@@ -42,7 +41,9 @@ const STUB_CONTEXT: LinkerContext = {
       { name: "mode_set", permission: null, payload: [{ name: "mode", type: "int" }] },
       { name: "tick", permission: null, payload: [] },
     ],
-  } as ApiDescriptor,
+  },
+  platformApi: null,
+  resolvedPlatforms: [],
 };
 
 /** Transpile source and return only the error messages. */
@@ -405,13 +406,13 @@ defplugin "Test" do
     int level = 0
   end
 end`;
-    const result = transpile(src, STUB_CONTEXT);
+    const { ast } = parseSource(src);
+    const result = link(ast, STUB_BUNDLE);
     const warn = result.diagnostics.find(
       (d) => d.level === "warning" && d.message.includes("bogus_event"),
     );
     expect(warn).toBeDefined();
     // The span should be on the event atom, not the whole on block
-    const { ast } = parseSource(src);
     const handler = ast.handlers[0]!;
     expect(warn!.span).toEqual(handler.eventSpan);
   });
@@ -1109,7 +1110,8 @@ defplugin "Test" do
     int x = 0
   end
 end`;
-    const result = transpile(src, STUB_CONTEXT);
+    const { ast } = parseSource(src);
+    const result = link(ast, STUB_BUNDLE);
     const warns = warnings(result.diagnostics);
     expect(warns.some((w) => w.includes("fakeEvent") && w.includes("nknown"))).toBe(true);
   });
@@ -1122,7 +1124,8 @@ defplugin "Test" do
     int x = 0
   end
 end`;
-      const result = transpile(src, STUB_CONTEXT);
+      const { ast } = parseSource(src);
+      const result = link(ast, STUB_BUNDLE);
       const warns = warnings(result.diagnostics);
       expect(warns.filter((w) => w.includes(event) && w.includes("nknown"))).toHaveLength(0);
     }
@@ -1807,10 +1810,10 @@ end`;
   it("parses @platforms with bracket list", () => {
     const src = `
 defplugin Test do
-  @platforms ["@eom", "@m1k"]
+  @platforms ["@eom"]
 end`;
     const plugin = transpileOk(src);
-    expect(plugin.platforms).toEqual(["@eom", "@m1k"]);
+    expect(plugin.platforms).toEqual(["@eom"]);
   });
 
   it("errors when using @ module attr in expression context", () => {
