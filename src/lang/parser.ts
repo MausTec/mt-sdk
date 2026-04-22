@@ -152,7 +152,7 @@ function isCompoundAssign(kind: TokenKind): boolean {
 
 // --- Parser class -------------------------------------------------------------
 
-class Parser {
+export class Parser {
   protected pos = 0;
   protected readonly diagnostics: LangDiagnostic[] = [];
 
