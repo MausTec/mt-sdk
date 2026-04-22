@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lex } from "../lexer.js";
+import { lexTest } from "../lexer.js";
 import { parseTestFile } from "./index.js";
 import type {
   TestFileNode,
@@ -19,7 +19,7 @@ import type { LangDiagnostic } from "../diagnostics.js";
 // --- Helpers ----------------------------------------------------------------
 
 function parse(source: string) {
-  const { tokens, diagnostics: lexDiag } = lex(source);
+  const { tokens, diagnostics: lexDiag } = lexTest(source);
   const { ast, diagnostics } = parseTestFile(tokens);
   return { ast, diagnostics: [...lexDiag, ...diagnostics] };
 }
