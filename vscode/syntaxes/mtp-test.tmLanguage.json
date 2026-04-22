@@ -15,6 +15,7 @@
         { "include": "#assert-stmt" },
         { "include": "#expect-stmt" },
         { "include": "#result-var" },
+        { "include": "#assert-keywords" },
         { "include": "source.mtp#fn-pure" },
         { "include": "source.mtp#fn-block" },
         { "include": "source.mtp#on-handler" },
