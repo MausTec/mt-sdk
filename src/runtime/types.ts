@@ -7,7 +7,7 @@
  * error reporting, and plugin lifecycle management.
  */
 
-import type { ApiDescriptor, HostFunctionDescriptor } from "../core/types.js";
+import type { ApiDescriptor, HostFunctionDescriptor } from "../analysis/types.js";
 
 // --- Values ------------------------------------------------------------------
 
