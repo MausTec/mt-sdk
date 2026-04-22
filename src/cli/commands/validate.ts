@@ -1,10 +1,10 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { resolve, relative, extname, join, dirname, basename } from "node:path";
 import { parseArgs } from "node:util";
-import { validate } from "../../core/validator.js";
-import { apiCheck } from "../../core/api-check.js";
-import type { ApiDescriptor } from "../../core/types.js";
-import { resolvePlatforms } from "../../core/platforms.js";
+import { validate } from "../../analysis/validator.js";
+import { apiCheck } from "../../analysis/api-check.js";
+import type { ApiDescriptor } from "../../analysis/types.js";
+import { resolvePlatforms } from "../../analysis/platforms.js";
 import { getLatestApiDescriptor, getMtActionsDescriptor } from "@maustec/mt-runtimes";
 import { info, success, error, warn, dim, CROSS, CHECK, WARN_MARK } from "../output.js";
 import { discoverWorkspace } from "../workspace.js";
@@ -109,7 +109,7 @@ export async function validateCommand(argv: string[]): Promise<void> {
       if (!values.strict && workspace.config.strict) {
         strictMode = true;
       }
-      targets = workspace.plugins.map((e) => ({ path: e.path, label: e.relative, kind: "json" as const }));
+      targets = workspace.members.map((e) => ({ path: e.dir, label: e.relative, kind: "json" as const }));
       if (!values.json) {
         const rel = relative(process.cwd(), workspace.configPath);
         info(`Workspace: ${rel} — ${targets.length} plugin(s)${strictMode ? " (strict)" : ""}`);
