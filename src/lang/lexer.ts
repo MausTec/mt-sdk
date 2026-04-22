@@ -23,17 +23,6 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["fn",        TokenKind.Fn],
   ["def",       TokenKind.Def],
   ["on",        TokenKind.On],
-  ["deftest",   TokenKind.Deftest],
-  ["describe",  TokenKind.Describe],
-  ["test",      TokenKind.Test],
-  ["setup",     TokenKind.Setup],
-  ["mock",      TokenKind.Mock],
-  ["emit",      TokenKind.Emit],
-  ["call",      TokenKind.CallStmt],
-  ["assert",    TokenKind.Assert],
-  ["expect",    TokenKind.Expect],
-  ["called",    TokenKind.Called],
-  ["times",     TokenKind.Times],
   ["if",        TokenKind.If],
   ["else",      TokenKind.Else],
   ["unless",    TokenKind.Unless],
@@ -52,6 +41,26 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["true",      TokenKind.True],
   ["false",     TokenKind.False],
   ["const",     TokenKind.Const],
+]);
+
+/**
+ * Additional keywords that are only meaningful inside `.test.mtp` files.
+ * These are intentionally absent from the base `KEYWORDS` map so that
+ * plugin source files can use names like `test`, `mock`, `emit`, etc.
+ * as ordinary identifiers.
+ */
+export const TEST_KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
+  ["deftest",  TokenKind.Deftest],
+  ["describe", TokenKind.Describe],
+  ["test",     TokenKind.Test],
+  ["setup",    TokenKind.Setup],
+  ["mock",     TokenKind.Mock],
+  ["emit",     TokenKind.Emit],
+  ["call",     TokenKind.CallStmt],
+  ["assert",   TokenKind.Assert],
+  ["expect",   TokenKind.Expect],
+  ["called",   TokenKind.Called],
+  ["times",    TokenKind.Times],
 ]);
 
 // --- Character helpers --------------------------------------------------------
@@ -79,8 +88,20 @@ class Lexer {
   private col = 1;
   private readonly tokens: Token[] = [];
   private readonly diagnostics: LangDiagnostic[] = [];
+  private readonly allKeywords: ReadonlyMap<string, TokenKind>;
 
-  constructor(private readonly source: string) {}
+  constructor(
+    private readonly source: string,
+    extraKeywords?: ReadonlyMap<string, TokenKind>,
+  ) {
+    if (extraKeywords) {
+      const merged = new Map(KEYWORDS);
+      for (const [k, v] of extraKeywords) merged.set(k, v);
+      this.allKeywords = merged;
+    } else {
+      this.allKeywords = KEYWORDS;
+    }
+  }
 
   scan(): LexResult {
     while (this.pos < this.source.length) {
@@ -260,8 +281,7 @@ class Lexer {
       name += this.advance();
     }
 
-    const kw = KEYWORDS.get(name);
-    
+    const kw = this.allKeywords.get(name);
     this.push(kw ?? TokenKind.Identifier, name, start);
   }
 
@@ -474,6 +494,16 @@ class Lexer {
 export function lex(source: string): LexResult {
   // Normalize line endings
   const normalised = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
   return new Lexer(normalised).scan();
+}
+
+/**
+ * Lex a `.test.mtp` source string. Identical to `lex()` but also recognises
+ * test-specific keywords (`test`, `mock`, `emit`, `assert`, etc.) that are
+ * intentionally absent from the base keyword map so they can be used as
+ * ordinary identifiers in plugin source files.
+ */
+export function lexTest(source: string): LexResult {
+  const normalised = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return new Lexer(normalised, TEST_KEYWORDS).scan();
 }
