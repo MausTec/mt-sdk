@@ -1,0 +1,156 @@
+{
+    "name": "mt-actions Plugin Test Language",
+    "scopeName": "source.mtp.test",
+    "fileTypes": [ "test.mtp" ],
+    "patterns": [
+        { "include": "#comment" },
+        { "include": "#string" },
+        { "include": "#deftest" },
+        { "include": "#describe" },
+        { "include": "#test-case" },
+        { "include": "#setup-block" },
+        { "include": "#mock-decl" },
+        { "include": "#emit-stmt" },
+        { "include": "#call-stmt" },
+        { "include": "#assert-keywords" },
+        { "include": "source.mtp#fn-pure" },
+        { "include": "source.mtp#fn-block" },
+        { "include": "source.mtp#on-handler" },
+        { "include": "source.mtp#def-keywords" },
+        { "include": "source.mtp#block-names" },
+        { "include": "source.mtp#control-keywords" },
+        { "include": "source.mtp#types-with-name" },
+        { "include": "source.mtp#number" },
+        { "include": "source.mtp#boolean" },
+        { "include": "source.mtp#atom" },
+        { "include": "source.mtp#special-vars" },
+        { "include": "source.mtp#global-var" },
+        { "include": "source.mtp#config-accessor" },
+        { "include": "source.mtp#operators" },
+        { "include": "source.mtp#function-call" }
+    ],
+    "repository": {
+        "comment": {
+            "name": "comment.line.number-sign.mtp",
+            "match": "#.*$"
+        },
+
+        "string": {
+            "name": "string.quoted.double.mtp",
+            "begin": "\"",
+            "end": "\"",
+            "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.mtp" } },
+            "endCaptures": { "0": { "name": "punctuation.definition.string.end.mtp" } },
+            "patterns": [
+                { "name": "constant.character.escape.mtp", "match": "\\\\." }
+            ]
+        },
+
+        "deftest": {
+            "comment": "deftest for ModuleName do - test file declaration with plugin reference",
+            "match": "\\b(deftest)\\s+(for)\\s+([A-Z][a-zA-Z0-9]*|\"[^\"]+\")",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "keyword.control.mtp" },
+                "3": { "name": "entity.name.type.module.mtp" }
+            }
+        },
+
+        "describe": {
+            "comment": "describe \"label\" do - test group block",
+            "match": "\\b(describe)\\s+(\"[^\"]*\")",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "string.quoted.double.mtp" }
+            }
+        },
+
+        "test-case": {
+            "comment": "test \"label\" do - individual test case",
+            "match": "\\b(test)\\s+(\"[^\"]*\")",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "string.quoted.double.mtp" }
+            }
+        },
+
+        "setup-block": {
+            "comment": "setup do - lifecycle hook block",
+            "match": "\\b(setup)\\b",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" }
+            }
+        },
+
+        "mock-decl": {
+            "comment": "mock name = (...) -> expr - mock function declaration",
+            "match": "\\b(mock)\\s+(\\w+)\\s*(=)",
+            "captures": {
+                "1": { "name": "keyword.other.definition.mtp" },
+                "2": { "name": "entity.name.function.mtp" },
+                "3": { "name": "keyword.operator.assignment.mtp" }
+            }
+        },
+
+        "emit-stmt": {
+            "comment": "emit :event [with expr] - fire plugin event",
+            "begin": "\\b(emit)\\s+(:\\w+)(?:\\s+(with))?",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.mtp" },
+                "2": { "name": "entity.name.type.event.mtp" },
+                "3": { "name": "keyword.control.mtp" }
+            },
+            "end": "$",
+            "patterns": [ ]
+        },
+
+        "call-stmt": {
+            "comment": "call fn(args) - invoke plugin function from test",
+            "match": "\\b(call)\\s+(\\w+)(?=\\s*\\()",
+            "captures": {
+                "1": { "name": "keyword.control.mtp" },
+                "2": { "name": "entity.name.function.call.mtp" }
+            }
+        },
+
+        "assert-keywords": {
+            "comment": "assert / assert_called / assert_not_called / assert_called_times",
+            "patterns": [
+                {
+                    "comment": "assert_called_times name, N",
+                    "match": "\\b(assert_called_times)\\s+(\\w+)",
+                    "captures": {
+                        "1": { "name": "keyword.control.mtp" },
+                        "2": { "name": "entity.name.function.call.mtp" }
+                    }
+                },
+                {
+                    "comment": "assert_not_called name",
+                    "match": "\\b(assert_not_called)\\s+(\\w+)",
+                    "captures": {
+                        "1": { "name": "keyword.control.mtp" },
+                        "2": { "name": "entity.name.function.call.mtp" }
+                    }
+                },
+                {
+                    "comment": "assert_called name [with expr]",
+                    "begin": "\\b(assert_called)\\s+(\\w+)(?:\\s+(with))?",
+                    "beginCaptures": {
+                        "1": { "name": "keyword.control.mtp" },
+                        "2": { "name": "entity.name.function.call.mtp" },
+                        "3": { "name": "keyword.control.mtp" }
+                    },
+                    "end": "$",
+                    "patterns": [ ]
+                },
+                {
+                    "comment": "assert expr",
+                    "match": "\\b(assert)\\b",
+                    "captures": {
+                        "1": { "name": "keyword.control.mtp" }
+                    }
+                }
+            ]
+        }
+    }
+}

@@ -51,6 +51,21 @@
                     "light": "./icons/mtp-light.svg",
                     "dark": "./icons/mtp-dark.svg"
                 }
+            },
+            {
+                "id": "mtp-test",
+                "aliases": [
+                    "Maus-Tec Plugin Test",
+                    "mtp-test"
+                ],
+                "extensions": [
+                    ".test.mtp"
+                ],
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "light": "./icons/mtp-test-light.svg",
+                    "dark": "./icons/mtp-test-dark.svg"
+                }
             }
         ],
         "grammars": [
@@ -58,6 +73,11 @@
                 "language": "mtp",
                 "scopeName": "source.mtp",
                 "path": "./syntaxes/mtp.tmLanguage.json"
+            },
+            {
+                "language": "mtp-test",
+                "scopeName": "source.mtp.test",
+                "path": "./syntaxes/mtp-test.tmLanguage.json"
             }
         ],
         "mcpServerDefinitionProviders": [
