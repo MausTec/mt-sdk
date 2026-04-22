@@ -31,7 +31,9 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["emit",      TokenKind.Emit],
   ["call",      TokenKind.CallStmt],
   ["assert",    TokenKind.Assert],
-  ["refute",    TokenKind.Refute],
+  ["expect",    TokenKind.Expect],
+  ["called",    TokenKind.Called],
+  ["times",     TokenKind.Times],
   ["if",        TokenKind.If],
   ["else",      TokenKind.Else],
   ["unless",    TokenKind.Unless],
@@ -50,11 +52,6 @@ const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map([
   ["true",      TokenKind.True],
   ["false",     TokenKind.False],
   ["const",     TokenKind.Const],
-
-  // Unstable keywords
-  ["assert_called",     TokenKind.AssertCalled],
-  ["assert_not_called", TokenKind.AssertNotCalled],
-  ["assert_call_count", TokenKind.AssertCallCount],
 ]);
 
 // --- Character helpers --------------------------------------------------------

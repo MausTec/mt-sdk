@@ -30,16 +30,9 @@ export enum TokenKind {
   Emit = "emit",
   CallStmt = "call",
   Assert = "assert",
-  Refute = "refute",
-
-  // --- Specific Assertion Keywords -------------------------------------------
-  // TODO: consider if this specific syntax works in practice or if we should add generic syntax constructs
-  // (Adding a `called :fn_name (with ar1g, ...)` syntax might be more flexible and readable than a separate 
-  // keyword for each assertion type, e.g. `assert called :fn_name with arg1, arg2` or `assert :fn_name called with arg1, arg2`)
-
-  AssertCalled = "assert_called",
-  AssertNotCalled = "assert_not_called",
-  AssertCallCount = "assert_call_count",
+  Expect = "expect",
+  Called = "called",
+  Times = "times",
 
   // --- Control-flow keywords -------------------------------------------------
   If = "if",
