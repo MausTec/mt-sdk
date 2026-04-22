@@ -10,7 +10,7 @@
  * runtime's executable host function registry.
  */
 
-import type { ApiDescriptor, HostFunctionDescriptor } from "../../core/types.js";
+import type { ApiDescriptor, HostFunctionDescriptor } from "../../analysis/types.js";
 import type { HostFunction, RuntimeValue, HostCallContext } from "../types.js";
 import type { HostRegistry } from "./registry.js";
 import { defaultStubs } from "./stubs.js";
