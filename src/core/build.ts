@@ -1,6 +1,6 @@
 import { transpile, formatPluginJson } from "../lang/index.js";
 import type { LangDiagnostic } from "../lang/index.js";
-import type { MtpPlugin } from "../analysis/mtp-types.js";
+import type { MtpPlugin } from "./mtp-types.js";
 
 export interface BuildOptions {
   /** Raw .mtp source text. */
