@@ -153,8 +153,8 @@ function isCompoundAssign(kind: TokenKind): boolean {
 // --- Parser class -------------------------------------------------------------
 
 class Parser {
-  private pos = 0;
-  private readonly diagnostics: LangDiagnostic[] = [];
+  protected pos = 0;
+  protected readonly diagnostics: LangDiagnostic[] = [];
 
   constructor(private readonly tokens: Token[]) {}
 
@@ -175,31 +175,31 @@ class Parser {
 
   // --- Token stream helpers --------------------------------------------------
 
-  private peek(): Token {
+  protected peek(): Token {
     return this.tokens[this.pos] ?? { kind: TokenKind.EOF, value: "", span: NULL_SPAN };
   }
 
   /** Peek at the token `offset` positions ahead of the current position. */
-  private peekAhead(offset: number): Token {
+  protected peekAhead(offset: number): Token {
     return this.tokens[this.pos + offset] ?? { kind: TokenKind.EOF, value: "", span: NULL_SPAN };
   }
 
-  private advance(): Token {
+  protected advance(): Token {
     const t = this.peek();
     if (t.kind !== TokenKind.EOF) this.pos++;
     return t;
   }
 
-  private check(kind: TokenKind): boolean {
+  protected check(kind: TokenKind): boolean {
     return this.peek().kind === kind;
   }
 
-  private eat(kind: TokenKind): Token | null {
+  protected eat(kind: TokenKind): Token | null {
     if (this.check(kind)) return this.advance();
     return null;
   }
 
-  private expect(kind: TokenKind, context: string): Token {
+  protected expect(kind: TokenKind, context: string): Token {
     if (this.check(kind)) return this.advance();
     const t = this.peek();
     this.diagnostics.push(langError(`Expected \`${kind}\` ${context}, got \`${t.kind}\``, t.span));
@@ -210,7 +210,7 @@ class Parser {
    * Consume `do` and enforce that the remainder of the line contains only
    * whitespace or comments - no code is allowed after `do`.
    */
-  private expectDoAndNewline(context: string): Token {
+  protected expectDoAndNewline(context: string): Token {
     const doToken = this.expect(TokenKind.Do, context);
 
     // After `do`, only comments and newlines are allowed on the same line.
@@ -237,7 +237,7 @@ class Parser {
    * FUTURE (Phase I): A doc parser will consume these raw lines and extract
    * structured tags (@param, @deprecated, etc.) into DocTag[] objects.
    */
-  private consumeTrivia(): string[] {
+  protected consumeTrivia(): string[] {
     let docs: string[] = [];
 
     while (this.check(TokenKind.Newline) || this.check(TokenKind.Comment)) {
@@ -404,7 +404,7 @@ class Parser {
   }
 
   /** Parse `(type name, type name, ...)`, returning an empty array on failure. */
-  private parseDefParams(): DefParam[] {
+  protected parseDefParams(): DefParam[] {
     if (!this.check(TokenKind.LParen)) {
       this.diagnostics.push(langError("Expected `(` to open parameter list", this.peek().span));
       return [];
@@ -693,7 +693,7 @@ class Parser {
 
   // --- Config block ----------------------------------------------------------
 
-  private parseConfigBlock(): ConfigBlockNode {
+  protected parseConfigBlock(): ConfigBlockNode {
     const kwToken = this.advance(); // consume `config`
     this.expectDoAndNewline("after `config`");
 
@@ -725,7 +725,7 @@ class Parser {
     };
   }
 
-  private parseConfigDecl(label: string | null): ConfigDecl | null {
+  protected parseConfigDecl(label: string | null): ConfigDecl | null {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
@@ -822,7 +822,7 @@ class Parser {
   }
 
   /** Parse `[N]` array size specifier, consuming brackets. Returns the size or null on error. */
-  private parseArraySize(): number | null {
+  protected parseArraySize(): number | null {
     this.advance(); // consume `[`
     const sizeToken = this.peek();
     let arraySize: number | null = null;
@@ -843,7 +843,7 @@ class Parser {
   /**
    * Parse a single scalar expression.
    */
-  private parseScalarValue(): Expr | null {
+  protected parseScalarValue(): Expr | null {
     const t = this.peek();
 
     if (t.kind === TokenKind.StringLit) {
@@ -883,7 +883,7 @@ class Parser {
    * callers pass 0 for a top-level expression.
    * Returns null without consuming tokens if no expression is found.
    */
-  private parseExpr(minPrec = 0): Expr | null {
+  protected parseExpr(minPrec = 0): Expr | null {
     let left = this.parsePrimary();
     if (left === null) return null;
 
@@ -954,7 +954,7 @@ class Parser {
   }
 
   /** Parse the non-operator (primary) prefix of an expression. */
-  private parsePrimary(): Expr | null {
+  protected parsePrimary(): Expr | null {
     const t = this.peek();
 
     // Parenthesized group
@@ -1148,7 +1148,7 @@ class Parser {
   }
 
   /** Parse `(expr, expr, ...)` as the argument list of a call expression. */
-  private parseCallArgs(): Expr[] {
+  protected parseCallArgs(): Expr[] {
     this.advance(); // consume `(`
     const args: Expr[] = [];
 
@@ -1167,7 +1167,7 @@ class Parser {
   }
 
   /** Parse `[expr]` suffix on an already-parsed target expression. */
-  private parseIndexSuffix(target: Expr): IndexExpr {
+  protected parseIndexSuffix(target: Expr): IndexExpr {
     this.advance(); // consume `[`
     const index = this.parseExpr(0);
 
@@ -1198,7 +1198,7 @@ class Parser {
    * with a diagnostic. Variables must be declared at the top of a `def` or `on`
    * block only.
    */
-  private parseBlockBody(insideControlFlow: boolean, ...stopAt: TokenKind[]): Stmt[] {
+  protected parseBlockBody(insideControlFlow: boolean, ...stopAt: TokenKind[]): Stmt[] {
     const stopSet = new Set([TokenKind.End, TokenKind.EOF, ...stopAt]);
     const stmts: Stmt[] = [];
 
@@ -1219,7 +1219,7 @@ class Parser {
    *
    * When `insideControlFlow` is true, local variable declarations are rejected.
    */
-  private parseStmt(docs: string[], insideControlFlow = false): Stmt | null {
+  protected parseStmt(docs: string[], insideControlFlow = false): Stmt | null {
     let t = this.peek();
     let statementIsConst = false;
 
@@ -1728,7 +1728,7 @@ class Parser {
    * If the current token is `if`, `unless`, `while`, or `until`, parse a
    * postfix conditional / loop guard and wrap `inner`.
    */
-  private wrapConditional(inner: Stmt): Stmt {
+  protected wrapConditional(inner: Stmt): Stmt {
     if (!this.check(TokenKind.If) && !this.check(TokenKind.Unless) &&
         !this.check(TokenKind.While) && !this.check(TokenKind.Until)) {
       return inner;
@@ -1755,7 +1755,7 @@ class Parser {
    * Lookahead helper: returns `true` if a `do` token appears on the current
    * line before a newline or EOF. Used to detect unknown block-like statements.
    */
-  private hasDoOnCurrentLine(): boolean {
+  protected hasDoOnCurrentLine(): boolean {
     let i = this.pos + 1;
 
     while (i < this.tokens.length) {
@@ -1769,7 +1769,7 @@ class Parser {
   }
 
   /** Parse `type name` or `type name = expr` as a local variable declaration. */
-  private parseLocalDecl(docs: string[], isConst = false): LocalDeclStmt | null {
+  protected parseLocalDecl(docs: string[], isConst = false): LocalDeclStmt | null {
     const typeToken = this.advance();
     const varType = TYPE_KEYWORDS.get(typeToken.kind)!;
 
@@ -1840,7 +1840,7 @@ class Parser {
   /**
    * Skip a `keyword ... do ... end` block, counting nested do/end pairs.
    */
-  private skipDoBlock(): void {
+  protected skipDoBlock(): void {
     this.advance(); // consume the opening keyword
 
     // Advance to the `do`
@@ -1859,7 +1859,7 @@ class Parser {
   }
 
   /** Consume tokens up to (but not including) the next `Newline` or `EOF`. */
-  private skipToNextLine(): void {
+  protected skipToNextLine(): void {
     while (!this.check(TokenKind.Newline) && !this.check(TokenKind.EOF)) {
       this.advance();
     }
