@@ -12,7 +12,8 @@
         { "include": "#mock-decl" },
         { "include": "#emit-stmt" },
         { "include": "#call-stmt" },
-        { "include": "#assert-keywords" },
+        { "include": "#assert-stmt" },
+        { "include": "#expect-stmt" },
         { "include": "source.mtp#fn-pure" },
         { "include": "source.mtp#fn-block" },
         { "include": "source.mtp#on-handler" },
@@ -113,44 +114,46 @@
             }
         },
 
-        "assert-keywords": {
-            "comment": "assert / assert_called / assert_not_called / assert_called_times",
+        "assert-stmt": {
+            "comment": "assert expr - boolean/value assertion",
+            "match": "\\b(assert)\\b",
+            "captures": {
+                "1": { "name": "keyword.control.mtp" }
+            }
+        },
+
+        "expect-stmt": {
+            "comment": "expect fn [not] called [with arg1, arg2] [op N times]",
+            "begin": "\\b(expect)\\s+(\\w+)\\s+(not\\s+)?(called)\\b",
+            "beginCaptures": {
+                "1": { "name": "keyword.control.mtp" },
+                "2": { "name": "entity.name.function.call.mtp" },
+                "3": { "name": "keyword.control.mtp" },
+                "4": { "name": "keyword.control.mtp" }
+            },
+            "end": "$",
             "patterns": [
                 {
-                    "comment": "assert_called_times name, N",
-                    "match": "\\b(assert_called_times)\\s+(\\w+)",
-                    "captures": {
-                        "1": { "name": "keyword.control.mtp" },
-                        "2": { "name": "entity.name.function.call.mtp" }
-                    }
-                },
-                {
-                    "comment": "assert_not_called name",
-                    "match": "\\b(assert_not_called)\\s+(\\w+)",
-                    "captures": {
-                        "1": { "name": "keyword.control.mtp" },
-                        "2": { "name": "entity.name.function.call.mtp" }
-                    }
-                },
-                {
-                    "comment": "assert_called name [with expr]",
-                    "begin": "\\b(assert_called)\\s+(\\w+)(?:\\s+(with))?",
-                    "beginCaptures": {
-                        "1": { "name": "keyword.control.mtp" },
-                        "2": { "name": "entity.name.function.call.mtp" },
-                        "3": { "name": "keyword.control.mtp" }
-                    },
-                    "end": "$",
-                    "patterns": [ ]
-                },
-                {
-                    "comment": "assert expr",
-                    "match": "\\b(assert)\\b",
+                    "match": "\\b(with|times)\\b",
                     "captures": {
                         "1": { "name": "keyword.control.mtp" }
                     }
-                }
+                },
+                {
+                    "match": "(>=|<=|>|<|!=|==)",
+                    "name": "keyword.operator.comparison.mtp"
+                },
+                { "include": "#string" },
+                { "include": "source.mtp#number" },
+                { "include": "source.mtp#atom" },
+                { "include": "source.mtp#special-vars" },
+                { "include": "source.mtp#global-var" }
             ]
+        },
+
+        "assert-keywords": {
+            "comment": "DEPRECATED — kept for reference only; use assert-stmt and expect-stmt",
+            "patterns": [ ]
         }
     }
 }
