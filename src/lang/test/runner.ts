@@ -1,0 +1,771 @@
+/**
+ * Test runner for `.test.mtp` files.
+ *
+ * Consumes a `TestFileNode` AST and one or more compiled plugin JSON objects,
+ * matches each test file to its subject plugin by ref, and executes each test
+ * case in isolation using a fresh runtime instance.
+ *
+ * Consumers (CLI, VS Code extension) provide the compiled plugin JSON and
+ * resolved API manifest; the runner owns only the execution logic.
+ *
+ * ## Isolation model
+ *
+ * Each test case gets its own `createRuntime` call so there is no state
+ * bleed between tests. The WASM source buffer is loaded once and reused
+ * across calls to amortize the cost of the initial file/network fetch.
+ *
+ * ## Scope layering
+ *
+ * Mocks, config overrides, and setup steps are inherited from outer scopes
+ * and applied before the test case's own steps, in the order:
+ *
+ *   file-level setup -> describe-level setup -> test-case steps
+ *
+ * A `MockDeclNode` appearing inside a test's step list re-declares the mock
+ * from that point onward within the same test execution.
+ */
+
+import type { ApiDescriptor } from "../../analysis/types.js";
+import type { HostFunction, Runtime, RuntimeValue } from "../../runtime/types.js";
+import { createRuntime } from "../../runtime/index.js";
+import type {
+  AssertStmt,
+  AssignGlobalStmt,
+  CallTestStmt,
+  ConfigOverrideNode,
+  DescribeNode,
+  EmitStmt,
+  ExpectStmt,
+  MockDeclNode,
+  SetupNode,
+  TestBodyItem,
+  TestCaseNode,
+  TestFileNode,
+  TestStep,
+} from "./ast.js";
+import {
+  EvalError,
+  evalArgs,
+  evalExpr,
+  runtimeValuesEqual,
+  toEventArg,
+} from "./eval.js";
+
+// --- Public configuration types ---------------------------------------------
+
+/**
+ * Runtime-level configuration shared across all test runs in a session.
+ */
+export interface TestRunConfig {
+  /**
+   * WASM binary source. Pass an `ArrayBuffer` to avoid re-loading from disk
+   * on every test file; the runner will not re-fetch it.
+   */
+  wasm: string | ArrayBuffer;
+
+  /**
+   * Resolved API manifest describing available host functions and events.
+   * The caller is responsible for selecting the correct manifest (e.g. via
+   * `getLatestApiDescriptor(sku)` from `mt-runtimes`). When omitted, only
+   * explicitly mocked functions will be registered.
+   */
+  manifest?: ApiDescriptor;
+
+  /**
+   * Capture a per-test-case execution trace. Adds overhead; useful for
+   * debugging failing tests. Default: `false`.
+   */
+  tracing?: boolean;
+}
+
+// --- Input types ------------------------------------------------------------
+
+/**
+ * A compiled plugin specimen paired with a reference key used for matching
+ * against `deftest for <ref>` declarations.
+ *
+ * TODO: Currently we're using `ref` to key on the `deftest for ...` clause, but once we
+ * get this code running we'll re-evaluate how to match plugin specimens with test cases.
+ */
+export interface TestPlugin {
+  /** The identifier the test file uses in `deftest for <ref>`. */
+  ref: string;
+  /** Compiled plugin JSON specimen. The caller is responsible for loading or transpiling. */
+  json: Record<string, unknown>;
+}
+
+// --- Result types ------------------------------------------------------------
+
+/**
+ * A single failed expectation or assertion within a test case.
+ */
+export interface TestFailure {
+  /** Human-readable description of what went wrong. */
+  message: string;
+  /**
+   * Zero-based index of the step in the test case that produced this failure.
+   * For setup steps, this is the index within the setup step list.
+   */
+  stepIndex: number;
+  /** What was expected (human-readable), if applicable. */
+  expected?: string;
+  /** What was actually observed, if applicable. */
+  received?: string;
+}
+
+/**
+ * Result of executing a single test case.
+ */
+export interface TestCaseResult {
+  kind: "pass" | "fail" | "error";
+  /** The test case label from `test "..."`. */
+  label: string;
+  /** The enclosing describe label, or `null` for top-level test cases. */
+  describe: string | null;
+  /** Non-empty when `kind` is `"fail"` or `"error"`. */
+  failures: TestFailure[];
+  /** Trace events captured during this test case. Empty when `tracing` is false. */
+  trace: import("../../runtime/types.js").TraceEvent[];
+  /** Wall-clock duration in milliseconds. */
+  durationMs: number;
+}
+
+/**
+ * Aggregated results for a single `.test.mtp` file.
+ */
+export interface TestSuiteResult {
+  /** The `pluginRef` string from the test file (`deftest for <ref>`). */
+  pluginRef: string;
+  cases: TestCaseResult[];
+  passed: number;
+  failed: number;
+  /** Cases that threw an unexpected error during execution. */
+  errored: number;
+  /** Total wall-clock duration in milliseconds. */
+  durationMs: number;
+}
+
+// --- Reporter ----------------------------------------------------------------
+
+/**
+ * Optional incremental reporter. Methods are called as execution proceeds;
+ * the runner also returns the full aggregated result when complete.
+ */
+export interface TestReporter {
+  onSuiteStart?: (info: { pluginRef: string; totalCases: number }) => void;
+  onCaseStart?: (info: { label: string; describe: string | null }) => void;
+  onCaseResult?: (result: TestCaseResult) => void;
+  onSuiteResult?: (result: TestSuiteResult) => void;
+}
+
+// --- Main entry point -------------------------------------------------------
+
+/**
+ * Run all test files against the matching plugins.
+ *
+ * Each `TestFileNode` in `tests` is matched to a `TestPlugin` by comparing
+ * `ast.pluginRef` against `plugin.ref`. Unmatched test files produce a suite
+ * result with a single error case. Results are emitted incrementally via
+ * `reporter` if provided, and returned as an array when all suites complete.
+ * 
+ * TODO: Note the  matcher above is on raw ref strings, NOT plugin ID slug. See previous comment about this.
+ */
+export async function runTests(options: {
+  tests: TestFileNode[];
+  plugins: TestPlugin[];
+  config: TestRunConfig;
+  reporter?: TestReporter;
+}): Promise<TestSuiteResult[]> {
+  const { tests, plugins, config, reporter } = options;
+
+  // Pre-load the WASM buffer once to avoid redundant I/O across test cases.
+  const wasmSource = await resolveWasmSource(config.wasm);
+
+  const results: TestSuiteResult[] = [];
+
+  for (const ast of tests) {
+    const match = plugins.find((p) => p.ref === ast.pluginRef);
+
+    if (!match) {
+      const result = unmatchedSuiteResult(ast.pluginRef);
+      reporter?.onSuiteResult?.(result);
+      results.push(result);
+      continue;
+    }
+
+    const result = await runTestSuite(ast, match.json, wasmSource, config, reporter);
+    results.push(result);
+  }
+
+  return results;
+}
+
+// --- Suite execution --------------------------------------------------------
+
+async function runTestSuite(
+  ast: TestFileNode,
+  pluginJson: Record<string, unknown>,
+  wasmSource: ArrayBuffer,
+  config: TestRunConfig,
+  reporter: TestReporter | undefined,
+): Promise<TestSuiteResult> {
+  const suiteStart = performance.now();
+  const cases = collectTestCases(ast);
+
+  reporter?.onSuiteStart?.({ pluginRef: ast.pluginRef, totalCases: cases.length });
+
+  const caseResults: TestCaseResult[] = [];
+
+  for (const { tc, describe } of cases) {
+    reporter?.onCaseStart?.({ label: tc.label, describe: describe?.label ?? null });
+
+    const result = await runTestCase(tc, describe ?? null, ast, pluginJson, wasmSource, config);
+
+    caseResults.push(result);
+    reporter?.onCaseResult?.(result);
+  }
+
+  const passed  = caseResults.filter((r) => r.kind === "pass").length;
+  const failed  = caseResults.filter((r) => r.kind === "fail").length;
+  const errored = caseResults.filter((r) => r.kind === "error").length;
+
+  const suiteResult: TestSuiteResult = {
+    pluginRef: ast.pluginRef,
+    cases: caseResults,
+    passed,
+    failed,
+    errored,
+    durationMs: performance.now() - suiteStart,
+  };
+
+  reporter?.onSuiteResult?.(suiteResult);
+  return suiteResult;
+}
+
+// --- Test case execution ----------------------------------------------------
+
+async function runTestCase(
+  tc: TestCaseNode,
+  describe: DescribeNode | null,
+  ast: TestFileNode,
+  pluginJson: Record<string, unknown>,
+  wasmSource: ArrayBuffer,
+  config: TestRunConfig,
+): Promise<TestCaseResult> {
+  const caseStart = performance.now();
+  const failures: TestFailure[] = [];
+
+  // Build the scope chain: file-level items + describe-level items.
+  const fileItems  = ast.body;
+  const groupItems = describe?.body ?? [];
+
+  // Resolve the initial mock registry from file -> describe declarations.
+  const mockRegistry = buildMockRegistry([...fileItems, ...groupItems]);
+
+  // Merge config overrides from file -> describe level into the plugin JSON.
+  const configOverrides = collectConfigOverrides([...fileItems, ...groupItems]);
+  const effectivePlugin = applyConfigOverrides(pluginJson, configOverrides);
+
+  // Collect call records per mock name.
+  const callRecords = new Map<string, CallRecord[]>();
+
+  // Create a fresh runtime for this test case.
+  const hostFunctions = buildHostFunctions(mockRegistry, callRecords);
+
+  const runtime = await createRuntime({
+    wasm: wasmSource,
+    ...(config.manifest !== undefined ? { manifest: config.manifest } : {}),
+    hostFunctions,
+    tracing: config.tracing ?? false,
+  });
+
+  const plugin = runtime.loadPlugin(effectivePlugin);
+
+  const makeGetGlobal = () => (name: string) =>
+    runtime.getVariable(plugin, name);
+
+  const makeGetConfig = () => (name: string) => {
+    const cfg = (effectivePlugin.config as Record<string, { default: unknown; type: string }> | undefined)?.[name];
+
+    if (!cfg) return undefined;
+    
+    return { 
+        type: cfg.type as RuntimeValue["type"], 
+        value: cfg.default 
+    } as RuntimeValue;
+  };
+
+  try {
+    // Execute file-level setup.
+    const fileSetup = fileItems.find((i): i is SetupNode => i.kind === "Setup");
+
+    if (fileSetup) {
+      const setupFailures = await executeSteps(
+        fileSetup.steps,
+        runtime,
+        plugin,
+        mockRegistry,
+        callRecords,
+        makeGetGlobal,
+        makeGetConfig,
+      );
+
+      failures.push(...setupFailures);
+    }
+
+    // Execute describe-level setup (after file-level setup).
+    const groupSetup = groupItems.find((i): i is SetupNode => i.kind === "Setup");
+
+    if (groupSetup) {
+      const setupFailures = await executeSteps(
+        groupSetup.steps,
+        runtime,
+        plugin,
+        mockRegistry,
+        callRecords,
+        makeGetGlobal,
+        makeGetConfig,
+      );
+
+      failures.push(...setupFailures);
+    }
+
+    // Execute the test case steps.
+    if (failures.length === 0) {
+      const stepFailures = await executeSteps(
+        tc.steps,
+        runtime,
+        plugin,
+        mockRegistry,
+        callRecords,
+        makeGetGlobal,
+        makeGetConfig,
+      );
+
+      failures.push(...stepFailures);
+    }
+  } catch (err) {
+    failures.push({
+      stepIndex: -1,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    runtime.freePlugin(plugin);
+    runtime.dispose();
+  }
+
+  const trace = config.tracing ? runtime.getTrace() : [];
+  const kind = failures.length === 0 ? "pass"
+    : failures.some((f) => f.stepIndex === -1) ? "error"
+    : "fail";
+
+  return {
+    kind,
+    label: tc.label,
+    describe: describe?.label ?? null,
+    failures,
+    trace,
+    durationMs: performance.now() - caseStart,
+  };
+}
+
+// --- Step execution ---------------------------------------------------------
+
+/**
+ * Execute a list of steps and return any failures. The `mockRegistry` and
+ * `callRecords` are mutated in place so that step-level `MockDeclNode`
+ * re-declarations take effect for subsequent steps.
+ */
+async function executeSteps(
+  steps: TestStep[],
+  runtime: Runtime,
+  plugin: import("../../runtime/types.js").PluginHandle,
+  mockRegistry: Map<string, MockDeclNode>,
+  callRecords: Map<string, CallRecord[]>,
+  getGlobal: () => (name: string) => RuntimeValue | undefined,
+  getConfig: () => (name: string) => RuntimeValue | undefined,
+): Promise<TestFailure[]> {
+  const failures: TestFailure[] = [];
+
+  for (let i = 0; i < steps.length; i++) {
+    const step: TestStep = steps[i]!;
+
+    try {
+      switch (step.kind) {
+        case "MockDecl": {
+          // Re-declaration: override the mock for all subsequent steps.
+          mockRegistry.set(step.name, step);
+
+          // Re-wire the host function to the updated body.
+          runtime.engine.registerHostFunction(
+            step.name,
+            buildMockFn(step, callRecords),
+          );
+
+          break;
+        }
+
+        case "ConfigOverride": {
+          // Apply config overrides at step time via setVariable.
+          // TODO: this sets the runtime variable namespace; whether the plugin
+          // reads config fields as variables depends on the WASM ABI. A future
+          // revision may need to use a dedicated setConfig API if one is added.
+          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+
+          for (const decl of step.declarations) {
+            const value = evalExpr(decl.default, env);
+            runtime.setVariable(plugin, decl.name, value);
+          }
+
+          break;
+        }
+
+        case "Emit": {
+          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+
+          // TODO: fireEvent currently accepts a single integer arg. When the
+          // runtime supports multi-arg events, pass the full evaluated list.
+          const firstArg = step.arg?.[0];
+          const arg = firstArg !== undefined ? toEventArg(evalExpr(firstArg, env)) : 0;
+
+          runtime.fireEvent(plugin, step.event, arg);
+          break;
+        }
+
+        case "CallTest": {
+          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const args = evalArgs(step.args, env);
+
+          runtime.callFunction(plugin, step.name, args);
+          break;
+        }
+
+        case "AssignGlobal": {
+          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const value = evalExpr(step.value, env);
+
+          runtime.setVariable(plugin, step.name, value);
+          break;
+        }
+
+        case "Assert": {
+          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const value = evalExpr(step.condition, env);
+
+          if (!isTruthy(value)) {
+            failures.push({
+              stepIndex: i,
+              message: `assert failed`,
+              received: `${value.value}`,
+            });
+          }
+
+          break;
+        }
+
+        case "Expect": {
+          const failure = evaluateExpect(step, callRecords, getConfig, getGlobal, i);
+          if (failure) failures.push(failure);
+          break;
+        }
+      }
+    } catch (err) {
+      failures.push({
+        stepIndex: i,
+        message: err instanceof EvalError
+          ? err.message
+          : `Unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  return failures;
+}
+
+// --- Expect evaluation ------------------------------------------------------
+
+/**
+ * "Expect" in our test language relates to function calls (and eventually other things
+ * that should *happen*). It describes behaviour expectations, not value assertions.
+ */
+function evaluateExpect(
+  stmt: ExpectStmt,
+  callRecords: Map<string, CallRecord[]>,
+  getConfig: () => (name: string) => RuntimeValue | undefined,
+  getGlobal: () => (name: string) => RuntimeValue | undefined,
+  stepIndex: number,
+): TestFailure | null {
+  let records = callRecords.get(stmt.name) ?? [];
+
+  // Filter by argument match if `with` args are specified.
+  if (stmt.args !== null) {
+    const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+    const expected = evalArgs(stmt.args, env);
+    records = records.filter((r) => argsMatch(r.args, expected));
+  }
+
+  const count = records.length;
+
+  // Evaluate the count constraint.
+  let satisfied: boolean;
+
+  if (stmt.times !== null) {
+    satisfied = compareCount(count, stmt.times.op, stmt.times.count);
+  } else {
+    satisfied = count > 0;
+  }
+
+  if (stmt.negated) satisfied = !satisfied;
+
+  if (!satisfied) {
+    return {
+      stepIndex,
+      message: buildExpectMessage(stmt, count),
+      expected: buildExpectDescription(stmt),
+      received: `called ${count} time${count === 1 ? "" : "s"}`,
+    };
+  }
+
+  return null;
+}
+
+function argsMatch(actual: RuntimeValue[], expected: RuntimeValue[]): boolean {
+  if (actual.length !== expected.length) return false;
+  return actual.every((a, i) => runtimeValuesEqual(a, expected[i]!));
+}
+
+function compareCount(
+  count: number,
+  op: "==" | "!=" | ">=" | ">" | "<=" | "<",
+  target: number,
+): boolean {
+  switch (op) {
+    case "==": return count === target;
+    case "!=": return count !== target;
+    case ">=": return count >= target;
+    case ">":  return count >  target;
+    case "<=": return count <= target;
+    case "<":  return count <  target;
+  }
+}
+
+function buildExpectMessage(stmt: ExpectStmt, actualCount: number): string {
+  const negStr = stmt.negated ? "not " : "";
+  const withStr = stmt.args !== null ? ` with the specified arguments` : "";
+
+  if (stmt.times !== null) {
+    return (
+      `expect ${stmt.name} ${negStr}called ${stmt.times.op} ${stmt.times.count} times${withStr}: ` +
+      `was called ${actualCount} time${actualCount === 1 ? "" : "s"}`
+    );
+  }
+
+  return (
+    `expect ${stmt.name} ${negStr}called${withStr}: ` +
+    `was called ${actualCount} time${actualCount === 1 ? "" : "s"}`
+  );
+}
+
+function buildExpectDescription(stmt: ExpectStmt): string {
+  const parts: string[] = [stmt.negated ? "not called" : "called"];
+
+  if (stmt.args !== null) parts.push("with matching args");
+  if (stmt.times !== null) parts.push(`${stmt.times.op} ${stmt.times.count} times`);
+
+  return parts.join(", ");
+}
+
+// --- Mock building ----------------------------------------------------------
+
+interface CallRecord {
+  args: RuntimeValue[];
+  returnValue: RuntimeValue;
+  simulatedMs: number;
+}
+
+/**
+ * Build the initial mock registry from the items of a scope (file or describe
+ * level). Only `MockDeclNode` items contribute; others are ignored.
+ */
+function buildMockRegistry(items: (TestBodyItem | TestStep)[]): Map<string, MockDeclNode> {
+  const registry = new Map<string, MockDeclNode>();
+
+  for (const item of items) {
+    if (item.kind === "MockDecl") {
+      registry.set(item.name, item);
+    }
+  }
+
+  return registry;
+}
+
+/**
+ * Build a `Record<name, HostFunction>` from the current mock registry, for
+ * passing to `createRuntime`.
+ */
+function buildHostFunctions(
+  registry: Map<string, MockDeclNode>,
+  callRecords: Map<string, CallRecord[]>,
+): Record<string, HostFunction> {
+  const result: Record<string, HostFunction> = {};
+
+  for (const [name, decl] of registry) {
+    result[name] = buildMockFn(decl, callRecords);
+  }
+
+  return result;
+}
+
+/**
+ * Build a single `HostFunction` from a `MockDeclNode`.
+ * The function evaluates the mock body with parameters bound from the call
+ * arguments, records the call, and returns the evaluated value.
+ */
+function buildMockFn(
+  decl: MockDeclNode,
+  callRecords: Map<string, CallRecord[]>,
+): HostFunction {
+  return (args, ctx) => {
+    // Bind positional params to the incoming args.
+    const locals = new Map<string, RuntimeValue>();
+
+    for (let i = 0; i < decl.params.length; i++) {
+      const param = decl.params[i];
+      const arg   = args[i] ?? { type: "int" as const, value: 0 };
+      if (param) locals.set(param.name, arg);
+    }
+
+    const returnValue = evalExpr(decl.body, { locals });
+
+    const record: CallRecord = { args, returnValue, simulatedMs: ctx.simulatedMs };
+    const list = callRecords.get(decl.name) ?? [];
+
+    list.push(record);
+    callRecords.set(decl.name, list);
+
+    return returnValue;
+  };
+}
+
+// --- Config override handling -----------------------------------------------
+
+/**
+ * Collect all `ConfigOverrideNode` items from a scope, in order.
+ * Items earlier in the list are shadowed by later ones for the same key.
+ */
+function collectConfigOverrides(items: (TestBodyItem | TestStep)[]): ConfigOverrideNode[] {
+  return items.filter((i): i is ConfigOverrideNode => i.kind === "ConfigOverride");
+}
+
+/**
+ * Return a shallow clone of `pluginJson` with the config field defaults
+ * patched from the given override nodes.
+ *
+ * The `config` section of the plugin JSON has entries shaped like:
+ *   `{ type: "int", default: 50, min: 0, max: 100 }`
+ * We evaluate the override `default` expression (using only literal values,
+ * as no runtime is available yet) and replace `default` in the clone.
+ */
+function applyConfigOverrides(
+  pluginJson: Record<string, unknown>,
+  overrides: ConfigOverrideNode[],
+): Record<string, unknown> {
+  if (overrides.length === 0) return pluginJson;
+
+  const config = structuredClone(
+    (pluginJson.config as Record<string, Record<string, unknown>> | undefined) ?? {},
+  );
+
+  for (const override of overrides) {
+    for (const decl of override.declarations) {
+      try {
+        const value = evalExpr(decl.default, {});
+        const existing = config[decl.name] ?? {};
+        config[decl.name] = { ...existing, default: value.value };
+      } catch {
+        // If evaluation fails (e.g. config.field references another value),
+        // leave the existing default in place; a step-level ConfigOverride
+        // can still apply it at runtime via setVariable.
+        // TODO: We should still report the error
+      }
+    }
+  }
+
+  return { ...pluginJson, config };
+}
+
+// --- Helpers ----------------------------------------------------------------
+
+/** Flat list of all test cases with their containing describe block (if any). */
+function collectTestCases(ast: TestFileNode): Array<{ tc: TestCaseNode; describe: DescribeNode | null }> {
+  const cases: Array<{ tc: TestCaseNode; describe: DescribeNode | null }> = [];
+
+  for (const item of ast.body) {
+    if (item.kind === "TestCase") {
+      cases.push({ tc: item, describe: null });
+
+    } else if (item.kind === "Describe") {
+
+      for (const inner of item.body) {
+        if (inner.kind === "TestCase") {
+          cases.push({ tc: inner, describe: item });
+        }
+      }
+
+    }
+  }
+
+  return cases;
+}
+
+function isTruthy(v: RuntimeValue): boolean {
+  switch (v.type) {
+    case "bool":   return v.value as boolean;
+    case "int":
+    case "float":  return (v.value as number) !== 0;
+    case "string": return (v.value as string).length > 0;
+    case "bytes":  return false;
+  }
+}
+
+/**
+ * Resolve a WASM source to an `ArrayBuffer`. When passed an `ArrayBuffer`
+ * directly, returns it unchanged. When passed a string path, reads the file.
+ * This ensures the runner can accept either form and avoids re-reading from
+ * disk on every test case.
+ */
+async function resolveWasmSource(wasm: string | ArrayBuffer): Promise<ArrayBuffer> {
+  if (wasm instanceof ArrayBuffer) return wasm;
+
+  // Node.js: use the fs module. Browser callers should pre-load to ArrayBuffer.
+  // TODO: Evaluate all other Node.js module usage throughout our SDK and ensure those are correctly isolated before Hub integration.
+  const { readFile } = await import("node:fs/promises");
+  const buf = await readFile(wasm);
+
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+}
+
+function unmatchedSuiteResult(pluginRef: string): TestSuiteResult {
+  return {
+    pluginRef,
+    cases: [
+      {
+        kind: "error",
+        label: "(setup)",
+        describe: null,
+        failures: [
+          {
+            stepIndex: -1,
+            message: `No plugin with ref '${pluginRef}' was provided to the test runner`,
+          },
+        ],
+        trace: [],
+        durationMs: 0,
+      },
+    ],
+    passed: 0,
+    failed: 0,
+    errored: 1,
+    durationMs: 0,
+  };
+}
