@@ -207,12 +207,6 @@ export interface RuntimeEngine {
  */
 export interface RuntimeOptions {
   /**
-   * WASM module source. Either a path to a .wasm file (Node),
-   * a URL (browser), or an ArrayBuffer / WebAssembly.Module.
-   */
-  wasm: string | ArrayBuffer;
-
-  /**
    * API manifest describing available host functions and events.
    * Used to auto-generate stubs for any host function not explicitly provided.
    */

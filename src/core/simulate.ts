@@ -13,12 +13,6 @@ export interface SimulateEvent {
 export interface SimulateOptions {
   /** Already-parsed plugin JSON. */
   plugin: Record<string, unknown>;
-  /**
-   * Path to the .wasm runtime binary.
-   * Use `resolveDefaultWasmPath()` for the standard @maustec/mt-runtimes location,
-   * or supply a custom path for testing or extension contexts.
-   */
-  wasmPath: string;
   /** Target SKU for auto-resolving the API manifest. Ignored if `apiDescriptor` is provided. */
   sku?: string;
   /** Explicit API manifest override. */
@@ -54,7 +48,7 @@ export interface SimulationResult {
  * Returns outcomes, the accumulated trace, and any runtime errors.
  */
 export async function simulate(options: SimulateOptions): Promise<SimulationResult> {
-  const { plugin, wasmPath, events, tracing = true } = options;
+  const { plugin, events, tracing = true } = options;
 
   let manifest: ApiDescriptor | undefined = options.apiDescriptor;
 
@@ -67,7 +61,6 @@ export async function simulate(options: SimulateOptions): Promise<SimulationResu
   }
 
   const runtime = await createRuntime({
-    wasm: wasmPath,
     ...(manifest !== undefined ? { manifest } : {}),
     ...(options.hostFunctions !== undefined ? { hostFunctions: options.hostFunctions } : {}),
     tracing,
@@ -103,16 +96,4 @@ export async function simulate(options: SimulateOptions): Promise<SimulationResu
     errors,
     ok: outcomes.every((o) => o.success) && errors.length === 0,
   };
-}
-
-/**
- * Resolve the standard WASM binary path from the @maustec/mt-runtimes package.
- *
- * Suitable for CLI and Node.js contexts. For bundled VS Code extensions,
- * use `context.asAbsolutePath(path.join("dist", "mt-actions-core.wasm"))` instead.
- */
-export function resolveDefaultWasmPath(): string {
-  const runtimesEntry = import.meta.resolve("@maustec/mt-runtimes");
-  const runtimesDir = resolve(new URL(runtimesEntry).pathname, "..", "..");
-  return resolve(runtimesDir, "wasm", "mt-actions-core.wasm");
 }

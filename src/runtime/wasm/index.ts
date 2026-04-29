@@ -1,9 +1,10 @@
 /**
- * WASM engine: RuntimeEngine implementation backed by the mt-actions WASM core.
+ * WASM engine: RuntimeEngine implementation backed by the mtp:core
+ * Component Model bridge from @maustec/mt-runtimes.
  *
- * This is the sole execution backend. All plugin parsing, builtin execution,
- * scoping, and control flow happen in WASM (the same C code as firmware).
- * Host functions, tracing, error reporting, and config saves dispatch to JS.
+ * All plugin execution (parsing, builtins, scoping, control flow) happens
+ * inside the WASM component. Host functions, tracing, error reporting, and
+ * config saves dispatch to JS via the bridge's HostCallbacks interface.
  */
 
 import type {
@@ -15,39 +16,37 @@ import type {
   TraceObserver,
   TraceEvent,
   ErrorReporter,
-  RuntimeError,
   ConfigSaveHandler,
   EventResult,
   CallResult,
   HostCallContext,
 } from "../types.js";
-import type { WasmSource, WasmImports } from "./loader.js";
-import { instantiateRuntime } from "./loader.js";
-import { createBindings, type BridgeBindings } from "./bindings.js";
 import {
-  readString,
-  deserializeValue,
-  deserializeArgs,
-  serializeArgs,
-  type EmscriptenModule,
-} from "./memory.js";
+  instantiateMtpCore,
+  type Bridge,
+  type HostCallbacks,
+} from "@maustec/mt-runtimes";
+import {
+  runtimeValueToArgValue,
+  argValueToRuntimeValue,
+  runtimeValueToConfigValue,
+  configValueToRuntimeValue,
+} from "./convert.js";
 
 /**
- * Create a WasmEngine from a WASM source.
- * This is async because WASM instantiation is async.
+ * Create a WasmEngine backed by the mtp:core Component Model bridge.
  */
-export async function createWasmEngine(source: WasmSource): Promise<WasmEngine> {
+export async function createWasmEngine(): Promise<WasmEngine> {
   const engine = new WasmEngine();
-  await engine.load(source);
+  await engine.load();
   return engine;
 }
 
 /**
- * WasmEngine implementation.
+ * WasmEngine implementation using the mtp:core Component Model bridge.
  */
 export class WasmEngine implements RuntimeEngine {
-  private mod: EmscriptenModule | null = null;
-  private bindings: BridgeBindings | null = null;
+  private bridge: Bridge | null = null;
 
   // JS-side state
   private hostFunctions = new Map<string, HostFunction>();
@@ -58,17 +57,18 @@ export class WasmEngine implements RuntimeEngine {
   private simulatedMs = 0;
 
   /**
-   * Load and instantiate the WASM module.
+   * Instantiate the WASM component.
    * Must be called before any other method.
    */
-  async load(source: WasmSource): Promise<void> {
-    const imports = this.buildImports();
-    this.mod = await instantiateRuntime(source, imports);
-    this.bindings = createBindings(this.mod);
+  async load(): Promise<void> {
+    const { bridge } = await instantiateMtpCore({
+      host: this.buildHostCallbacks(),
+    });
+    this.bridge = bridge;
   }
 
   init(): void {
-    this.requireBindings().init();
+    this.requireBridge().init();
   }
 
   registerHostFunction(
@@ -77,8 +77,7 @@ export class WasmEngine implements RuntimeEngine {
     permission?: string | null,
   ): void {
     this.hostFunctions.set(name, fn);
-    // Also register with the C runtime so it doesn't hit the unresolved path
-    this.requireBindings().registerHostFunction(name, permission ?? null);
+    this.requireBridge().registerHostFunction(name, permission ?? undefined);
   }
 
   setUnresolvedHandler(handler: UnresolvedFunctionHandler): void {
@@ -87,7 +86,7 @@ export class WasmEngine implements RuntimeEngine {
 
   setTraceObserver(observer: TraceObserver): void {
     this.traceObserver = observer;
-    this.requireBindings().setTracing(true);
+    this.requireBridge().setTracing(true);
   }
 
   setErrorReporter(reporter: ErrorReporter): void {
@@ -100,10 +99,10 @@ export class WasmEngine implements RuntimeEngine {
 
   loadPlugin(json: Record<string, unknown>): PluginHandle {
     const jsonString = JSON.stringify(json);
-    const id = this.requireBindings().loadPlugin(jsonString);
+    const id = this.requireBridge().loadPlugin(jsonString);
 
     if (id < 0) {
-      throw new Error("Failed to load plugin: WASM bridge returned error");
+      throw new Error("Failed to load plugin: bridge returned error");
     }
 
     return {
@@ -118,14 +117,16 @@ export class WasmEngine implements RuntimeEngine {
   }
 
   fireEvent(plugin: PluginHandle, event: string, arg: number): EventResult {
-    const bindings = this.requireBindings();
-    const errorCode = bindings.fireEvent(plugin.id, event, arg);
-    const resultStr = bindings.getLastResult();
+    const result = this.requireBridge().fireEvent(
+      plugin.id,
+      event,
+      { tag: "int-val", val: arg },
+    );
 
     return {
-      accumulator: deserializeValue(resultStr),
-      errorCode,
-      success: errorCode === 0,
+      accumulator: argValueToRuntimeValue(result.value),
+      errorCode: result.error,
+      success: result.error === 0,
     };
   }
 
@@ -134,32 +135,35 @@ export class WasmEngine implements RuntimeEngine {
     name: string,
     args: RuntimeValue[],
   ): CallResult {
-    const argsJson = serializeArgs(args);
-    const bindings = this.requireBindings();
-    const errorCode = bindings.callFunction(plugin.id, name, argsJson);
-    const resultStr = bindings.getLastResult();
+    const result = this.requireBridge().callFunction(
+      plugin.id,
+      name,
+      args.map(runtimeValueToArgValue),
+    );
 
     return {
-      accumulator: deserializeValue(resultStr),
-      errorCode,
-      success: errorCode === 0,
+      accumulator: argValueToRuntimeValue(result.value),
+      errorCode: result.error,
+      success: result.error === 0,
     };
   }
 
   getVariable(plugin: PluginHandle, name: string): RuntimeValue | undefined {
-    const json = this.requireBindings().getVariable(plugin.id, name);
-
-    if (json === null) return undefined;
-    return deserializeValue(json);
+    const cv = this.requireBridge().getConfigValue(plugin.id, name);
+    if (cv === undefined) return undefined;
+    return configValueToRuntimeValue(cv);
   }
 
   setVariable(plugin: PluginHandle, name: string, value: RuntimeValue): void {
-    const valueJson = JSON.stringify({ type: value.type, value: value.value });
-    this.requireBindings().setVariable(plugin.id, name, valueJson);
+    this.requireBridge().setConfigValue(
+      plugin.id,
+      name,
+      runtimeValueToConfigValue(value),
+    );
   }
 
   freePlugin(plugin: PluginHandle): void {
-    this.requireBindings().freePlugin(plugin.id);
+    this.requireBridge().freePlugin(plugin.id);
   }
 
   dispose(): void {
@@ -168,110 +172,76 @@ export class WasmEngine implements RuntimeEngine {
     this.traceObserver = null;
     this.errorReporter = null;
     this.configSaveHandler = null;
-    this.bindings = null;
-    this.mod = null;
+    this.bridge = null;
   }
 
   // --- Internal --------------------------------------------------------------
 
-  private requireBindings(): BridgeBindings {
-    if (!this.bindings) {
+  private requireBridge(): Bridge {
+    if (!this.bridge) {
       throw new Error("WasmEngine not initialized! Call load() first");
     }
-
-    return this.bindings;
+    return this.bridge;
   }
 
-  private requireMod(): EmscriptenModule {
-    if (!this.mod) {
-      throw new Error("WasmEngine not initialized! Call load() first");
-    }
-
-    return this.mod;
-  }
-
-  private buildImports(): WasmImports {
+  private buildHostCallbacks(): HostCallbacks {
     return {
-      // C: int js_host_dispatch(int slot, const char* fn_name, const char* args_json, int arg_count)
-      js_host_dispatch: (
-        slot: number,
-        fnNamePtr: number,
-        argsJsonPtr: number,
-        _argCount: number,
-      ): number => {
-        const mod = this.requireMod();
-        const name = readString(mod, fnNamePtr);
-        const argsJson = readString(mod, argsJsonPtr);
-        const args = deserializeArgs(argsJson);
+      // Called when execution hits a host function dispatch.
+      // fnName and args are already decoded — no heap pointer math needed.
+      hostDispatch: (slot, fnName, args): number => {
+        const runtimeArgs = args.map(argValueToRuntimeValue);
         const context = this.makeCallContext(slot);
 
-        // Try explicit host function first
-        const fn = this.hostFunctions.get(name);
+        const fn = this.hostFunctions.get(fnName);
 
         if (fn) {
-          fn(args, context);
+          fn(runtimeArgs, context);
           return 0;
         }
 
-        // Fall back to unresolved handler
         if (this.unresolvedHandler) {
-          this.unresolvedHandler(name, args, context);
+          this.unresolvedHandler(fnName, runtimeArgs, context);
           return 0;
         }
 
-        // No handler — report as error
         this.reportError({
           code: -1,
-          message: `Unresolved host function: ${name}`,
+          message: `Unresolved host function: ${fnName}`,
           pluginId: slot,
-          context: name,
+          context: fnName,
         });
 
         return -1;
       },
 
-      // C: int js_config_save(int slot)
-      js_config_save: (slot: number): number => {
-        if (!this.configSaveHandler) return 1;
-        // Config save hook in bridge doesn't pass config JSON, just the slot.
-        // The JS side can query config from the plugin if needed.
-        return this.configSaveHandler(slot, {}) ? 1 : 0;
+      // Called when a plugin requests a config save.
+      configSave: (slot): boolean => {
+        if (!this.configSaveHandler) return true;
+        return this.configSaveHandler(slot, {});
       },
 
-      // C: void js_trace_event(int slot, int kind, const char* fn_name, int result)
-      js_trace_event: (
-        slot: number,
-        kind: number,
-        fnNamePtr: number,
-        result: number,
-      ): void => {
+      // Called for diagnostic trace events when tracing is enabled.
+      // kind is "action-enter" | "action-exit" (WIT hyphen form).
+      // Normalized to underscore form to match the public TraceEvent type.
+      traceEvent: (slot, kind, fnName, retCode): void => {
         if (!this.traceObserver) return;
-        const mod = this.requireMod();
-        const fnName = readString(mod, fnNamePtr);
 
-        // kind maps to mta_trace_kind_t: 0=ACTION_ENTER, 1=ACTION_EXIT
-        const traceKind = kind === 0 ? "action_enter" : "action_exit";
+        const traceKind =
+          kind === "action-enter" ? "action_enter" : "action_exit";
 
         const event: TraceEvent = {
           kind: traceKind,
           pluginId: slot,
           name: fnName,
-          detail: { result },
+          detail: { result: retCode },
           timestamp: this.simulatedMs,
         };
 
         this.traceObserver(event);
       },
 
-      // C: void js_error_report(int slot, const char* fn_name, int error_code)
-      js_error_report: (
-        slot: number,
-        fnNamePtr: number,
-        errorCode: number,
-      ): void => {
-        const mod = this.requireMod();
-        const fnName = readString(mod, fnNamePtr);
-        
+      // Called when the WASM runtime encounters an error.
+      errorReport: (slot, fnName, errorCode): void => {
         this.reportError({
           code: errorCode,
           message: `Runtime error in ${fnName}`,
@@ -286,11 +256,11 @@ export class WasmEngine implements RuntimeEngine {
     return {
       simulatedMs: this.simulatedMs,
       pluginId,
-      pluginConfig: {}, // FUTURE: read from WASM when bridge supports it
+      pluginConfig: {},
     };
   }
 
-  private reportError(error: RuntimeError): void {
+  private reportError(error: Parameters<ErrorReporter>[0]): void {
     if (this.errorReporter) {
       this.errorReporter(error);
     }
