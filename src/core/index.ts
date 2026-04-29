@@ -10,4 +10,13 @@ export type {
   EventOutcome,
   SimulationResult,
 } from "./simulate.js";
-export { simulate, resolveDefaultWasmPath } from "./simulate.js";
+export { simulate } from "./simulate.js";
+
+export type {
+  DiscoveredTestFile,
+  TestDiscovery,
+  TestOptions,
+  MemberBuildError,
+  TestResult,
+} from "./test.js";
+export { discoverTests, runProjectTests } from "./test.js";

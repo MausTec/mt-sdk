@@ -8,18 +8,6 @@ import { getLatestApiDescriptor } from "@maustec/mt-runtimes";
 import { transpile } from "../../lang/index.js";
 
 /**
- * Resolve the path to the WASM binary from the mt-runtimes package.
- */
-function resolveWasmPath(): string {
-  // import.meta.resolve isn't universally available, so we resolve manually.
-  // mt-runtimes is a sibling package with "files": ["wasm"], so the wasm/
-  // directory ships alongside its dist/.
-  const runtimesEntry = import.meta.resolve("@maustec/mt-runtimes");
-  const runtimesDir = resolve(new URL(runtimesEntry).pathname, "..", "..");
-  return resolve(runtimesDir, "wasm", "mt-actions-core.wasm");
-}
-
-/**
  * Resolve the plugin source to a parsed JSON object.
  * Accepts .json (plugin JSON) or .mtp (compiles first).
  */
@@ -123,23 +111,11 @@ export async function simulateCommand(argv: string[]): Promise<void> {
   const events = values.event ?? ["modeSet"];
   const args = (values.arg ?? ["128"]).map(Number);
 
-  // Create runtime
-  const wasmPath = resolveWasmPath();
-  if (!existsSync(wasmPath)) {
-    error(
-      `WASM runtime not found at ${wasmPath}.\n` +
-        `  Make sure @maustec/mt-runtimes has the wasm/ directory.`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
   info(`Loading WASM runtime...`);
 
   let runtime: Runtime;
   try {
     runtime = await createRuntime({
-      wasm: wasmPath,
       ...(manifest ? { manifest } : {}),
       tracing: values.trace,
       errorReporter: (err: RuntimeError) => {

@@ -74,7 +74,7 @@ export { formatTrace, formatTraceEvent, traceToJson } from "./format.js";
  * 4. Wires up tracing, error reporting, and config save callbacks
  */
 export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
-  const engine = await createWasmEngine(options.wasm);
+  const engine = await createWasmEngine();
   engine.init();
 
   // Host function setup

@@ -28,6 +28,7 @@
 import type { ApiDescriptor } from "../../analysis/types.js";
 import type { HostFunction, Runtime, RuntimeValue } from "../../runtime/types.js";
 import { createRuntime } from "../../runtime/index.js";
+import { moduleNameToSlug } from "../emitter/plugin.js";
 import type {
   AssertStmt,
   AssignGlobalStmt,
@@ -58,12 +59,6 @@ import {
  */
 export interface TestRunConfig {
   /**
-   * WASM binary source. Pass an `ArrayBuffer` to avoid re-loading from disk
-   * on every test file; the runner will not re-fetch it.
-   */
-  wasm: string | ArrayBuffer;
-
-  /**
    * Resolved API manifest describing available host functions and events.
    * The caller is responsible for selecting the correct manifest (e.g. via
    * `getLatestApiDescriptor(sku)` from `mt-runtimes`). When omitted, only
@@ -81,15 +76,16 @@ export interface TestRunConfig {
 // --- Input types ------------------------------------------------------------
 
 /**
- * A compiled plugin specimen paired with a reference key used for matching
- * against `deftest for <ref>` declarations.
+ * A compiled plugin specimen to run tests against.
  *
- * TODO: Currently we're using `ref` to key on the `deftest for ...` clause, but once we
- * get this code running we'll re-evaluate how to match plugin specimens with test cases.
+ * The runner matches each test file's `deftest for <ModuleName>` declaration
+ * to a plugin by comparing the spinal-cased slug of the module name
+ * (`moduleNameToSlug(ast.pluginRef)`) against `plugin.json["name"]`.
+ * The `name` field in compiled plugin JSON is always the slug produced by
+ * `moduleNameToSlug` during compilation and is the canonical stable identity
+ * key — it is never overridable by plugin authors.
  */
 export interface TestPlugin {
-  /** The identifier the test file uses in `deftest for <ref>`. */
-  ref: string;
   /** Compiled plugin JSON specimen. The caller is responsible for loading or transpiling. */
   json: Record<string, unknown>;
 }
@@ -163,12 +159,11 @@ export interface TestReporter {
 /**
  * Run all test files against the matching plugins.
  *
- * Each `TestFileNode` in `tests` is matched to a `TestPlugin` by comparing
- * `ast.pluginRef` against `plugin.ref`. Unmatched test files produce a suite
- * result with a single error case. Results are emitted incrementally via
- * `reporter` if provided, and returned as an array when all suites complete.
- * 
- * TODO: Note the  matcher above is on raw ref strings, NOT plugin ID slug. See previous comment about this.
+ * Each `TestFileNode` in `tests` is matched to a `TestPlugin` by slug:
+ * `moduleNameToSlug(ast.pluginRef)` is compared against `plugin.json["name"]`.
+ * Unmatched test files produce a suite result with a single error case.
+ * Results are emitted incrementally via `reporter` if provided, and returned
+ * as an array when all suites complete.
  */
 export async function runTests(options: {
   tests: TestFileNode[];
@@ -178,13 +173,23 @@ export async function runTests(options: {
 }): Promise<TestSuiteResult[]> {
   const { tests, plugins, config, reporter } = options;
 
-  // Pre-load the WASM buffer once to avoid redundant I/O across test cases.
-  const wasmSource = await resolveWasmSource(config.wasm);
-
   const results: TestSuiteResult[] = [];
 
   for (const ast of tests) {
-    const match = plugins.find((p) => p.ref === ast.pluginRef);
+    // Path-based refs are not supported at the runner level.
+    if (ast.pluginRefIsPath) {
+      const result = errorSuiteResult(
+        ast.pluginRef,
+        `Path-based \`deftest for\` refs are not supported. ` +
+          `Use the plugin module name instead (e.g. \`deftest for LovenseMaxDriver\`).`,
+      );
+      reporter?.onSuiteResult?.(result);
+      results.push(result);
+      continue;
+    }
+
+    const slug = moduleNameToSlug(ast.pluginRef);
+    const match = plugins.find((p) => (p.json["name"] as string) === slug);
 
     if (!match) {
       const result = unmatchedSuiteResult(ast.pluginRef);
@@ -193,7 +198,7 @@ export async function runTests(options: {
       continue;
     }
 
-    const result = await runTestSuite(ast, match.json, wasmSource, config, reporter);
+    const result = await runTestSuite(ast, match.json, config, reporter);
     results.push(result);
   }
 
@@ -205,7 +210,6 @@ export async function runTests(options: {
 async function runTestSuite(
   ast: TestFileNode,
   pluginJson: Record<string, unknown>,
-  wasmSource: ArrayBuffer,
   config: TestRunConfig,
   reporter: TestReporter | undefined,
 ): Promise<TestSuiteResult> {
@@ -219,7 +223,7 @@ async function runTestSuite(
   for (const { tc, describe } of cases) {
     reporter?.onCaseStart?.({ label: tc.label, describe: describe?.label ?? null });
 
-    const result = await runTestCase(tc, describe ?? null, ast, pluginJson, wasmSource, config);
+    const result = await runTestCase(tc, describe ?? null, ast, pluginJson, config);
 
     caseResults.push(result);
     reporter?.onCaseResult?.(result);
@@ -249,7 +253,6 @@ async function runTestCase(
   describe: DescribeNode | null,
   ast: TestFileNode,
   pluginJson: Record<string, unknown>,
-  wasmSource: ArrayBuffer,
   config: TestRunConfig,
 ): Promise<TestCaseResult> {
   const caseStart = performance.now();
@@ -273,7 +276,6 @@ async function runTestCase(
   const hostFunctions = buildHostFunctions(mockRegistry, callRecords);
 
   const runtime = await createRuntime({
-    wasm: wasmSource,
     ...(config.manifest !== undefined ? { manifest: config.manifest } : {}),
     hostFunctions,
     tracing: config.tracing ?? false,
@@ -728,24 +730,14 @@ function isTruthy(v: RuntimeValue): boolean {
   }
 }
 
-/**
- * Resolve a WASM source to an `ArrayBuffer`. When passed an `ArrayBuffer`
- * directly, returns it unchanged. When passed a string path, reads the file.
- * This ensures the runner can accept either form and avoids re-reading from
- * disk on every test case.
- */
-async function resolveWasmSource(wasm: string | ArrayBuffer): Promise<ArrayBuffer> {
-  if (wasm instanceof ArrayBuffer) return wasm;
-
-  // Node.js: use the fs module. Browser callers should pre-load to ArrayBuffer.
-  // TODO: Evaluate all other Node.js module usage throughout our SDK and ensure those are correctly isolated before Hub integration.
-  const { readFile } = await import("node:fs/promises");
-  const buf = await readFile(wasm);
-
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+function unmatchedSuiteResult(pluginRef: string): TestSuiteResult {
+  return errorSuiteResult(
+    pluginRef,
+    `No plugin matching slug '${moduleNameToSlug(pluginRef)}' was provided to the test runner.`,
+  );
 }
 
-function unmatchedSuiteResult(pluginRef: string): TestSuiteResult {
+function errorSuiteResult(pluginRef: string, message: string): TestSuiteResult {
   return {
     pluginRef,
     cases: [
@@ -756,7 +748,7 @@ function unmatchedSuiteResult(pluginRef: string): TestSuiteResult {
         failures: [
           {
             stepIndex: -1,
-            message: `No plugin with ref '${pluginRef}' was provided to the test runner`,
+            message,
           },
         ],
         trace: [],
