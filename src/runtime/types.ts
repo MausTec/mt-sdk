@@ -193,6 +193,24 @@ export interface RuntimeEngine {
   /** Write a plugin-scoped variable. */
   setVariable(plugin: PluginHandle, name: string, value: RuntimeValue): void;
 
+  /**
+   * Read a global variable from the plugin's persistent globals scope.
+   * Every loaded plugin has a persistent globals scope seeded from its
+   * "variables" block; values written by plugin code or via
+   * `setGlobalValue` survive across event invocations.
+   */
+  getGlobalValue(plugin: PluginHandle, name: string): RuntimeValue | undefined;
+
+  /** Write a global variable in the plugin's persistent globals scope. */
+  setGlobalValue(plugin: PluginHandle, name: string, value: RuntimeValue): void;
+
+  /**
+   * Reset the plugin's globals scope, re-seeding from the plugin's
+   * "variables" block defaults. Useful between test cases or when a host
+   * wants to reset plugin state without re-loading the plugin JSON.
+   */
+  resetGlobals(plugin: PluginHandle): boolean;
+
   /** Release all resources for a loaded plugin. */
   freePlugin(plugin: PluginHandle): void;
 
@@ -262,6 +280,23 @@ export interface Runtime {
 
   /** Write a plugin variable. */
   setVariable(plugin: PluginHandle, name: string, value: RuntimeValue): void;
+
+  /**
+   * Read a global variable from the plugin's persistent globals scope.
+   * Every loaded plugin has a persistent globals scope seeded from its
+   * "variables" block; values written by plugin code or via
+   * `setGlobalValue` survive across event invocations.
+   */
+  getGlobalValue(plugin: PluginHandle, name: string): RuntimeValue | undefined;
+
+  /** Write a global variable in the plugin's persistent globals scope. */
+  setGlobalValue(plugin: PluginHandle, name: string, value: RuntimeValue): void;
+
+  /**
+   * Reset the plugin's globals scope, re-seeding from the plugin's
+   * "variables" block defaults.
+   */
+  resetGlobals(plugin: PluginHandle): boolean;
 
   /** Get the accumulated trace since last clear. */
   getTrace(): TraceEvent[];

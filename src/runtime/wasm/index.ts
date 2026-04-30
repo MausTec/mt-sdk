@@ -162,6 +162,24 @@ export class WasmEngine implements RuntimeEngine {
     );
   }
 
+  getGlobalValue(plugin: PluginHandle, name: string): RuntimeValue | undefined {
+    const cv = this.requireBridge().getGlobalValue(plugin.id, name);
+    if (cv === undefined) return undefined;
+    return configValueToRuntimeValue(cv);
+  }
+
+  setGlobalValue(plugin: PluginHandle, name: string, value: RuntimeValue): void {
+    this.requireBridge().setGlobalValue(
+      plugin.id,
+      name,
+      runtimeValueToConfigValue(value),
+    );
+  }
+
+  resetGlobals(plugin: PluginHandle): boolean {
+    return this.requireBridge().resetGlobals(plugin.id);
+  }
+
   freePlugin(plugin: PluginHandle): void {
     this.requireBridge().freePlugin(plugin.id);
   }
