@@ -93,6 +93,11 @@ export interface TestOptions {
    * debugging failing tests. Default: `false`.
    */
   tracing?: boolean;
+
+  /**
+   * Emit diagnostic logs to stderr for each setup step. Default: `false`.
+   */
+  debug?: boolean;
 }
 
 /**
@@ -201,12 +206,19 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
     };
   }
 
-  // Resolve API manifest.
+  // Resolve API manifest. Defaults to EOM3K when neither an explicit
+  // descriptor nor an explicit sku is supplied. Without a manifest, any
+  // host function the plugin calls that isn't explicitly mocked will fail
+  // the action chain (e.g. `get_plugin_config`, `to_string`), preventing
+  // downstream `expect` assertions from ever observing the calls they care
+  // about. Matches the default behavior of `mt-sdk simulate`.
   let manifest: ApiDescriptor | undefined = options?.apiDescriptor;
 
-  if (!manifest && options?.sku) {
+  if (!manifest) {
+    const sku = options?.sku ?? "EOM3K";
+
     try {
-      manifest = getLatestApiDescriptor(options.sku);
+      manifest = getLatestApiDescriptor(sku);
     } catch {
       // No manifest, only explicitly mocked functions will be registered.
     }
@@ -289,15 +301,56 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
   // Run all tests.
   const testAsts = runnableFiles.map((f) => f.ast!);
 
+  // Wrap the caller-provided reporter so that streaming `onSuiteResult`
+  // events carry the source filePath. We track which suite is in flight by
+  // sequencing through `runnableFiles` in lockstep with `onSuiteStart`.
+
+  let suiteCursor = 0;
+  const userReporter = options?.reporter;
+
+  const wrappedReporter: TestReporter | undefined = userReporter
+    ? {
+        onSuiteStart: (info) => {
+          userReporter.onSuiteStart?.(info);
+        },
+        onCaseStart: (info) => {
+          userReporter.onCaseStart?.(info);
+        },
+        onCaseResult: (result) => {
+          userReporter.onCaseResult?.(result);
+        },
+        onSuiteResult: (suite) => {
+          const file = runnableFiles[suiteCursor++];
+          
+          if (file && suite.filePath === undefined) {
+            suite.filePath = file.filePath;
+          }
+
+          userReporter.onSuiteResult?.(suite);
+        },
+      }
+    : undefined;
+
   const suites = await runTests({
     tests: testAsts,
     plugins,
     config: {
       ...(manifest !== undefined ? { manifest } : {}),
       tracing: options?.tracing ?? false,
+      debug: options?.debug ?? false,
     },
-    ...(options?.reporter !== undefined ? { reporter: options.reporter } : {}),
+
+    ...(wrappedReporter !== undefined ? { reporter: wrappedReporter } : {}),
   });
+
+  // Annotate any remaining suites (no-op when the wrapper above already ran).
+  for (let i = 0; i < suites.length; i++) {
+    const file = runnableFiles[i];
+    
+    if (file && suites[i] && suites[i]!.filePath === undefined) {
+      suites[i]!.filePath = file.filePath;
+    }
+  }
 
   const passed  = suites.reduce((n, s) => n + s.passed, 0);
   const failed  = suites.reduce((n, s) => n + s.failed, 0);
@@ -326,7 +379,7 @@ function scanTestFiles(memberDir: string, testsDir: string): DiscoveredTestFile[
   if (!existsSync(absTestsDir)) return [];
 
   let entries: string[];
-  
+
   try {
     entries = readdirSync(absTestsDir);
   } catch {
