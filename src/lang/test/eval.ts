@@ -61,9 +61,11 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
       const v = env.getGlobal?.(expr.name);
 
       if (v === undefined) {
+        // TODO: Document more resolution for this but keep the error brief, or add a second arg to EvalError for help:
+        // The runtime returned no value. Verify the variable is declared in the plugin's "variables" block (the name must match exactly, 
+        // without the leading '$'), and that the plugin has fired at least one event so any pre-test setup has had a chance to assign it.
         throw new EvalError(
-          `$${expr.name} is not readable in this evaluation context, ` +
-          `ensure a runtime connection is available`,
+          `$${expr.name}: plugin global variable could not be read.`
         );
       }
 
