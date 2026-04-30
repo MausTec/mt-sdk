@@ -52,6 +52,32 @@ import {
   toEventArg,
 } from "./eval.js";
 
+// --- Diagnostic logging ------------------------------------------------------
+
+/**
+ * Print a step-by-step diagnostic line to stderr when `debug` is enabled.
+ */
+function dbg(debug: boolean | undefined, msg: string): void {
+  if (debug) console.error(`[mt-test] ${msg}`);
+}
+
+/**
+ * One-line summary of a step for diagnostic output. If a step doesn't have any obvious
+ * identifying information, this will return an empty string.
+ */
+function describeStep(step: TestStep): string {
+  switch (step.kind) {
+    case "Emit":         return ` :${step.event}`;
+    case "CallTest":     return ` ${step.name}`;
+    case "AssignGlobal": return ` $${step.name} = ...`;
+    case "ConfigOverride": return ` (${step.declarations.length} field${step.declarations.length === 1 ? "" : "s"})`;
+    case "MockDecl":     return ` ${step.name}`;
+    case "Assert":       return "";
+    case "Expect":       return ` ${step.name}`;
+    default:             return "";
+  }
+}
+
 // --- Public configuration types ---------------------------------------------
 
 /**
@@ -71,6 +97,13 @@ export interface TestRunConfig {
    * debugging failing tests. Default: `false`.
    */
   tracing?: boolean;
+
+  /**
+   * Print step-by-step setup diagnostics to stderr: test -> specimen matching,
+   * plugin JSON load, runtime online, driver scope enable, and each test step
+   * before it executes. Default: `false`.
+   */
+  debug?: boolean;
 }
 
 // --- Input types ------------------------------------------------------------
@@ -132,6 +165,12 @@ export interface TestCaseResult {
 export interface TestSuiteResult {
   /** The `pluginRef` string from the test file (`deftest for <ref>`). */
   pluginRef: string;
+  /**
+   * Absolute filesystem path to the source `.test.mtp` file, when known.
+   * Populated by callers that have file context (e.g. `runProjectTests`);
+   * direct callers of `runTests` may leave it undefined.
+   */
+  filePath?: string;
   cases: TestCaseResult[];
   passed: number;
   failed: number;
@@ -189,15 +228,18 @@ export async function runTests(options: {
     }
 
     const slug = moduleNameToSlug(ast.pluginRef);
+    dbg(config.debug, `match: deftest for \`${ast.pluginRef}\` -> slug \`${slug}\` (candidates: ${plugins.map((p) => p.json["name"]).join(", ") || "none"})`);
     const match = plugins.find((p) => (p.json["name"] as string) === slug);
 
     if (!match) {
+      dbg(config.debug, `match: no plugin found for slug \`${slug}\` -- skipping suite`);
       const result = unmatchedSuiteResult(ast.pluginRef);
       reporter?.onSuiteResult?.(result);
       results.push(result);
       continue;
     }
 
+    dbg(config.debug, `match: resolved to plugin \`${match.json["name"]}\` (display=\`${match.json["display_name"] ?? ""}\`)`);
     const result = await runTestSuite(ast, match.json, config, reporter);
     results.push(result);
   }
@@ -280,11 +322,13 @@ async function runTestCase(
     hostFunctions,
     tracing: config.tracing ?? false,
   });
+  dbg(config.debug, `case [${describe?.label ?? "-"} > ${tc.label}]: runtime online`);
 
   const plugin = runtime.loadPlugin(effectivePlugin);
+  dbg(config.debug, `case [${tc.label}]: loaded plugin slot=${plugin.id} name=${effectivePlugin["name"]}`);
 
   const makeGetGlobal = () => (name: string) =>
-    runtime.getVariable(plugin, name);
+    runtime.getGlobalValue(plugin, name);
 
   const makeGetConfig = () => (name: string) => {
     const cfg = (effectivePlugin.config as Record<string, { default: unknown; type: string }> | undefined)?.[name];
@@ -302,6 +346,7 @@ async function runTestCase(
     const fileSetup = fileItems.find((i): i is SetupNode => i.kind === "Setup");
 
     if (fileSetup) {
+      dbg(config.debug, `case [${tc.label}]: running file-level setup (${fileSetup.steps.length} steps)`);
       const setupFailures = await executeSteps(
         fileSetup.steps,
         runtime,
@@ -310,6 +355,7 @@ async function runTestCase(
         callRecords,
         makeGetGlobal,
         makeGetConfig,
+        config.debug,
       );
 
       failures.push(...setupFailures);
@@ -319,6 +365,7 @@ async function runTestCase(
     const groupSetup = groupItems.find((i): i is SetupNode => i.kind === "Setup");
 
     if (groupSetup) {
+      dbg(config.debug, `case [${tc.label}]: running describe-level setup (${groupSetup.steps.length} steps)`);
       const setupFailures = await executeSteps(
         groupSetup.steps,
         runtime,
@@ -327,6 +374,7 @@ async function runTestCase(
         callRecords,
         makeGetGlobal,
         makeGetConfig,
+        config.debug,
       );
 
       failures.push(...setupFailures);
@@ -334,6 +382,7 @@ async function runTestCase(
 
     // Execute the test case steps.
     if (failures.length === 0) {
+      dbg(config.debug, `case [${tc.label}]: running test body (${tc.steps.length} steps)`);
       const stepFailures = await executeSteps(
         tc.steps,
         runtime,
@@ -342,6 +391,7 @@ async function runTestCase(
         callRecords,
         makeGetGlobal,
         makeGetConfig,
+        config.debug,
       );
 
       failures.push(...stepFailures);
@@ -386,11 +436,13 @@ async function executeSteps(
   callRecords: Map<string, CallRecord[]>,
   getGlobal: () => (name: string) => RuntimeValue | undefined,
   getConfig: () => (name: string) => RuntimeValue | undefined,
+  debug?: boolean,
 ): Promise<TestFailure[]> {
   const failures: TestFailure[] = [];
 
   for (let i = 0; i < steps.length; i++) {
     const step: TestStep = steps[i]!;
+    dbg(debug, `  step[${i}] ${step.kind}${describeStep(step)}`);
 
     try {
       switch (step.kind) {
@@ -446,7 +498,7 @@ async function executeSteps(
           const env = { getConfig: getConfig(), getGlobal: getGlobal() };
           const value = evalExpr(step.value, env);
 
-          runtime.setVariable(plugin, step.name, value);
+          runtime.setGlobalValue(plugin, step.name, value);
           break;
         }
 
