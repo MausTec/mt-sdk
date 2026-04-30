@@ -65,6 +65,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
+    "commander": "^14.0.3",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"
   }

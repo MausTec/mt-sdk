@@ -20,7 +20,7 @@ export function formatTraceEvent(event: TraceEvent): string {
     }
     case "host_return": {
       const detail = event.detail as { result?: unknown } | undefined;
-      const result = detail?.result !== undefined ? ` → ${formatValue(detail.result)}` : "";
+      const result = detail?.result !== undefined ? ` -> ${formatValue(detail.result)}` : "";
       return `${ts} ${plugin} RET   ${event.name}${result}`;
     }
     case "variable_set": {
@@ -31,7 +31,7 @@ export function formatTraceEvent(event: TraceEvent): string {
       return `${ts} ${plugin} GET   $${event.name}`;
     case "condition_eval": {
       const detail = event.detail as { result?: boolean } | undefined;
-      const result = detail?.result !== undefined ? ` → ${detail.result}` : "";
+      const result = detail?.result !== undefined ? ` -> ${detail.result}` : "";
       return `${ts} ${plugin} COND  ${event.name}${result}`;
     }
     case "scope_push":

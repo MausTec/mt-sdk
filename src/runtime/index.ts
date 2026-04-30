@@ -151,6 +151,25 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       engine.setVariable(plugin, name, value);
     },
 
+    getGlobalValue(
+      plugin: PluginHandle,
+      name: string,
+    ): RuntimeValue | undefined {
+      return engine.getGlobalValue(plugin, name);
+    },
+
+    setGlobalValue(
+      plugin: PluginHandle,
+      name: string,
+      value: RuntimeValue,
+    ): void {
+      engine.setGlobalValue(plugin, name, value);
+    },
+
+    resetGlobals(plugin: PluginHandle): boolean {
+      return engine.resetGlobals(plugin);
+    },
+
     getTrace(): TraceEvent[] {
       return [...collector.getEvents()];
     },
