@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join, resolve, extname, dirname, basename } from "node:path";
-import { parseArgs } from "node:util";
+import { Command } from "commander";
 import { info, warn, error, success, dim } from "../output.js";
 import { formatPluginJson, transpile } from "../../lang/index.js";
 import type { LangDiagnostic } from "../../lang/index.js";
@@ -118,23 +118,19 @@ function buildProject(dir: string, outputDest: string): void {
   buildMtpFile(join(dir, mtpFile), outputDest);
 }
 
-export async function buildCommand(argv: string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    options: {
-      out: { type: "string", short: "o" },
-    },
-    allowPositionals: true,
-  });
-
-  const target = positionals[0] ? resolve(positionals[0]) : undefined;
+export const buildCommand = new Command("build")
+  .description("Compile .mtp plugin sources to plugin.json")
+  .argument("[path]", "file or directory to build (default: cwd)")
+  .option("-o, --out <path>", "output path or directory (default: plugin.json)")
+  .action(async (path: string | undefined, opts: { out?: string }) => {
+  const target = path ? resolve(path) : undefined;
 
   // --- Single file argument ---
   if (target && existsSync(target) && statSync(target).isFile()) {
     const ext = extname(target);
 
     if (ext === ".mtp") {
-      const outputDest = resolveOutput(values.out, dirname(target));
+      const outputDest = resolveOutput(opts.out, dirname(target));
       buildMtpFile(target, outputDest);
       return;
     }
@@ -153,13 +149,13 @@ export async function buildCommand(argv: string[]): Promise<void> {
   const projectDir = target ?? process.cwd();
 
   if (target && !existsSync(target)) {
-    error(`Path not found: ${positionals[0]}`);
+    error(`Path not found: ${path}`);
     process.exitCode = 1;
     return;
   }
 
   const type = detectProjectType(projectDir);
-  const outputDest = resolveOutput(values.out, projectDir);
+  const outputDest = resolveOutput(opts.out, projectDir);
 
   switch (type) {
     case "app":
@@ -178,4 +174,5 @@ export async function buildCommand(argv: string[]): Promise<void> {
       warn("Unable to detect project type. Ensure the current directory contains an mt-sdk.json, manifest.json, plugin.json, or *.mtp file.");
       process.exitCode = 1;
   }
-}
+
+});

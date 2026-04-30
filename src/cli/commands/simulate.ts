@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, extname, join } from "node:path";
-import { parseArgs } from "node:util";
+import { Command } from "commander";
 import { info, success, error, warn, dim } from "../output.js";
 import { createRuntime, formatTrace } from "../../runtime/index.js";
 import type { Runtime, PluginHandle, RuntimeError } from "../../runtime/index.js";
@@ -17,17 +17,21 @@ function loadPlugin(path: string): Record<string, unknown> {
   if (ext === ".mtp") {
     const source = readFileSync(path, "utf-8");
     const result = transpile(source);
+
     for (const d of result.diagnostics) {
       const loc = d.span ? `${path}:${d.span.line}:${d.span.col}` : path;
+
       if (d.level === "error") {
-        error(`${loc} — ${d.message}`);
+        error(`${loc} -- ${d.message}`);
       } else {
-        warn(`${loc} — ${d.message}`);
+        warn(`${loc} -- ${d.message}`);
       }
     }
+
     if (result.diagnostics.some((d) => d.level === "error")) {
       throw new Error("Compilation failed");
     }
+
     return result.plugin as unknown as Record<string, unknown>;
   }
 
@@ -43,41 +47,40 @@ function loadPlugin(path: string): Record<string, unknown> {
  */
 function findPlugin(): string | null {
   const cwd = process.cwd();
+
   try {
     const mtpFile = readdirSync(cwd).find((f) => f.endsWith(".mtp"));
+
     if (mtpFile) return join(cwd, mtpFile);
   } catch {
     // ignore
   }
+
   const jsonPath = join(cwd, "plugin.json");
+
   if (existsSync(jsonPath)) return jsonPath;
+
   return null;
 }
 
-export async function simulateCommand(argv: string[]): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    options: {
-      api: { type: "string", short: "a" },
-      event: { type: "string", short: "e", multiple: true },
-      arg: { type: "string", multiple: true },
-      trace: { type: "boolean", default: true },
-      json: { type: "boolean", default: false },
-    },
-    allowPositionals: true,
-  });
-
+async function simulate(
+      path: string | undefined,
+      opts: { api?: string; event?: string[]; arg?: string[]; trace: boolean; json?: boolean },
+): Promise<void> {
   // Resolve plugin path
   let pluginPath: string;
-  if (positionals.length > 0) {
-    pluginPath = resolve(positionals[0]!);
+
+  if (path !== undefined) {
+    pluginPath = resolve(path);
   } else {
     const found = findPlugin();
+
     if (!found) {
       error("No plugin file found. Provide a path or run from a plugin directory.");
       process.exitCode = 1;
       return;
     }
+
     pluginPath = found;
   }
 
@@ -89,6 +92,7 @@ export async function simulateCommand(argv: string[]): Promise<void> {
 
   // Load plugin JSON
   let pluginJson: Record<string, unknown>;
+
   try {
     pluginJson = loadPlugin(pluginPath);
   } catch (e) {
@@ -98,8 +102,9 @@ export async function simulateCommand(argv: string[]): Promise<void> {
   }
 
   // Resolve API manifest
-  const sku = values.api ?? "EOM3K";
+  const sku = opts.api ?? "EOM3K";
   let manifest;
+
   try {
     manifest = getLatestApiDescriptor(sku);
   } catch {
@@ -108,16 +113,17 @@ export async function simulateCommand(argv: string[]): Promise<void> {
   }
 
   // Events to fire
-  const events = values.event ?? ["modeSet"];
-  const args = (values.arg ?? ["128"]).map(Number);
+  const events = opts.event ?? ["modeSet"];
+  const args = (opts.arg ?? ["128"]).map(Number);
 
   info(`Loading WASM runtime...`);
 
   let runtime: Runtime;
+
   try {
     runtime = await createRuntime({
       ...(manifest ? { manifest } : {}),
-      tracing: values.trace,
+      tracing: opts.trace,
       errorReporter: (err: RuntimeError) => {
         error(`[P${err.pluginId}] ${err.message}${err.context ? ` (${err.context})` : ""}`);
       },
@@ -132,6 +138,7 @@ export async function simulateCommand(argv: string[]): Promise<void> {
   let plugin: PluginHandle;
   try {
     plugin = runtime.loadPlugin(pluginJson);
+
     success(
       `Loaded plugin: ${plugin.displayName}` +
         (plugin.pluginType ? ` ${dim(`[${plugin.pluginType}]`)}` : ""),
@@ -153,26 +160,29 @@ export async function simulateCommand(argv: string[]): Promise<void> {
 
     if (result.success) {
       success(
-        `Event ${eventName} → OK` +
+        `Event ${eventName} -> OK` +
           (result.accumulator ? ` (acc=${result.accumulator.value})` : ""),
       );
     } else {
-      error(`Event ${eventName} → error code ${result.errorCode}`);
+      error(`Event ${eventName} -> error code ${result.errorCode}`);
     }
   }
 
   // Display trace
-  if (values.trace) {
+  if (opts.trace) {
     const trace = runtime.getTrace();
+
     if (trace.length > 0) {
       console.log();
-      if (values.json) {
+
+      if (opts.json) {
         const { traceToJson } = await import("../../runtime/format.js");
         console.log(JSON.stringify(traceToJson(trace), null, 2));
       } else {
         info("Execution trace:");
         console.log(formatTrace(trace));
       }
+
     } else {
       info(dim("No trace events captured."));
     }
@@ -180,9 +190,11 @@ export async function simulateCommand(argv: string[]): Promise<void> {
 
   // Display errors
   const errors = runtime.getErrors();
+  
   if (errors.length > 0) {
     console.log();
     warn(`${errors.length} error(s) during execution:`);
+
     for (const err of errors) {
       console.log(
         `  P${err.pluginId} [${err.code}] ${err.message}` +
@@ -195,3 +207,13 @@ export async function simulateCommand(argv: string[]): Promise<void> {
   runtime.freePlugin(plugin);
   runtime.dispose();
 }
+
+export const simulateCommand = new Command("simulate")
+  .description("Run a simulation with a plugin against one or more events")
+  .argument("[path]", "plugin file or directory (default: auto-discover in cwd)")
+  .option("-a, --api <sku>", "device SKU for API manifest (default: EOM3K)")
+  .option("-e, --event <events...>", "event(s) to fire (default: modeSet)")
+  .option("--arg <args...>", "event argument(s) (default: 128)")
+  .option("--no-trace", "disable execution trace")
+  .option("--json", "output trace as JSON")
+  .action(simulate);
