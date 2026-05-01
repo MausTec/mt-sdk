@@ -70,6 +70,13 @@ export function formatTraceEvent(event: TraceEvent): string {
       const detail = event.detail as { result?: number } | undefined;
       return `${ts} ${plugin} NOTE  ${event.name}${detail?.result ? ` (${detail.result})` : ""}`;
     }
+    case "error": {
+      // detail.errorKind carries the structured kebab-case kind ("var-not-set", etc.).
+      // detail.result mirrors the raw enum ordinal for callers that need it.
+      const detail = event.detail as { errorKind?: string; result?: number } | undefined;
+      const kind = detail?.errorKind ?? "unknown";
+      return `${ts} ${plugin} ERR!  [${kind}] ${event.name}`;
+    }
     case "function_call":
       return `${ts} ${plugin} CALL  @${event.name}`;
     case "function_return":
