@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, extname, join } from "node:path";
 import { Command } from "commander";
 import { info, success, error, warn, dim } from "../output.js";
-import { createRuntime, formatTrace } from "../../runtime/index.js";
+import { createRuntime, formatTrace, formatTraceEvent } from "../../runtime/index.js";
 import type { Runtime, PluginHandle, RuntimeError } from "../../runtime/index.js";
 import { getLatestApiDescriptor } from "@maustec/mt-runtimes";
 import { transpile } from "../../lang/index.js";
@@ -65,7 +65,7 @@ function findPlugin(): string | null {
 
 async function simulate(
       path: string | undefined,
-      opts: { api?: string; event?: string[]; arg?: string[]; trace: boolean; json?: boolean },
+      opts: { api?: string; event?: string[]; arg?: string[]; trace: boolean; live?: boolean; json?: boolean },
 ): Promise<void> {
   // Resolve plugin path
   let pluginPath: string;
@@ -124,6 +124,13 @@ async function simulate(
     runtime = await createRuntime({
       ...(manifest ? { manifest } : {}),
       tracing: opts.trace,
+      ...(opts.live && opts.trace
+        ? {
+            traceObserver: (event) => {
+              process.stderr.write(`${formatTraceEvent(event)}\n`);
+            },
+          }
+        : {}),
       errorReporter: (err: RuntimeError) => {
         error(`[P${err.pluginId}] ${err.message}${err.context ? ` (${err.context})` : ""}`);
       },
@@ -190,7 +197,7 @@ async function simulate(
 
   // Display errors
   const errors = runtime.getErrors();
-  
+
   if (errors.length > 0) {
     console.log();
     warn(`${errors.length} error(s) during execution:`);
@@ -215,5 +222,6 @@ export const simulateCommand = new Command("simulate")
   .option("-e, --event <events...>", "event(s) to fire (default: modeSet)")
   .option("--arg <args...>", "event argument(s) (default: 128)")
   .option("--no-trace", "disable execution trace")
+  .option("--live", "stream trace events to stderr as they occur (useful for diagnosing hangs)")
   .option("--json", "output trace as JSON")
   .action(simulate);
