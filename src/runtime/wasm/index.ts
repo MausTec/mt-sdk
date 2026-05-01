@@ -239,13 +239,15 @@ export class WasmEngine implements RuntimeEngine {
       },
 
       // Called for diagnostic trace events when tracing is enabled.
-      // kind is "action-enter" | "action-exit" (WIT hyphen form).
-      // Normalized to underscore form to match the public TraceEvent type.
+      // kind comes through as the WIT hyphenated form; we normalize to the
+      // underscore form used by TraceEvent.
       traceEvent: (slot, kind, fnName, retCode): void => {
         if (!this.traceObserver) return;
 
-        const traceKind =
-          kind === "action-enter" ? "action_enter" : "action_exit";
+        const traceKind = (kind as string).replace(
+          /-/g,
+          "_",
+        ) as TraceEvent["kind"];
 
         const event: TraceEvent = {
           kind: traceKind,

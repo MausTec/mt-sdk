@@ -42,6 +42,34 @@ export function formatTraceEvent(event: TraceEvent): string {
       return `${ts} ${plugin} >     ${event.name}`;
     case "action_exit":
       return `${ts} ${plugin} <     ${event.name}`;
+    case "event_enter": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} EVT>  ${event.name}(${detail?.result ?? 0})`;
+    }
+    case "event_exit": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} EVT<  ${event.name} -> ${detail?.result ?? 0}`;
+    }
+    case "fn_enter": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} FN>   @${event.name}/${detail?.result ?? 0}`;
+    }
+    case "fn_exit": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} FN<   @${event.name} -> ${detail?.result ?? 0}`;
+    }
+    case "cond_eval": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} COND  ${event.name} -> ${detail?.result ? "true" : "false"}`;
+    }
+    case "loop_iter": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} ITER  ${event.name} #${detail?.result ?? 0}`;
+    }
+    case "note": {
+      const detail = event.detail as { result?: number } | undefined;
+      return `${ts} ${plugin} NOTE  ${event.name}${detail?.result ? ` (${detail.result})` : ""}`;
+    }
     case "function_call":
       return `${ts} ${plugin} CALL  @${event.name}`;
     case "function_return":
