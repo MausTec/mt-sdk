@@ -96,7 +96,17 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const collector = new TraceCollector();
 
   if (tracing) {
-    engine.setTraceObserver(collector.observer());
+    const collectorObserver = collector.observer();
+    const liveObserver = options.traceObserver;
+
+    if (liveObserver) {
+      engine.setTraceObserver((event) => {
+        liveObserver(event);
+        collectorObserver(event);
+      });
+    } else {
+      engine.setTraceObserver(collectorObserver);
+    }
   }
 
   // Error collection

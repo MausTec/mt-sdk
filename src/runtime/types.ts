@@ -79,6 +79,13 @@ export interface TraceEvent {
   kind:
     | "action_enter"
     | "action_exit"
+    | "event_enter"
+    | "event_exit"
+    | "fn_enter"
+    | "fn_exit"
+    | "cond_eval"
+    | "loop_iter"
+    | "note"
     | "variable_set"
     | "variable_get"
     | "condition_eval"
@@ -243,6 +250,12 @@ export interface RuntimeOptions {
 
   /** Enable trace capture. Default: true. */
   tracing?: boolean;
+
+  /**
+   * Live trace observer fired for each event as it arrives, in addition to
+   * being collected for `getTrace()`.
+   */
+  traceObserver?: TraceObserver;
 
   /** Custom error reporter. Errors are always collected; this gets a live callback. */
   errorReporter?: ErrorReporter;
