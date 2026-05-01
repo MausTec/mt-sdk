@@ -1928,8 +1928,8 @@ end`;
     const plugin = transpileOk(src);
     const fn = plugin.functions?.["myFunc"] as { vars?: string[]; actions?: unknown[] };
     expect(fn.vars).toContain("level");
-    expect(fn.actions).toContainEqual({ set: "$speed" });
-    expect(fn.actions).toContainEqual({ round: [], to: "$level" });
+    expect(fn.actions).toContainEqual({ set: { "$_": "$speed" } });
+    expect(fn.actions).toContainEqual({ round: "$_", to: "$level" });
   });
 
   it("compiles complex init in on block", () => {

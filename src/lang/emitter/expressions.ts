@@ -250,8 +250,27 @@ function emitCall(
     );
   }
 
-  let argValue: MtpValue | MtpValue[];
-  if (resolvedArgs.length === 0) {
+  let argValue: MtpValue | MtpValue[] | Record<string, MtpValue>;
+
+  if (isLocal) {
+    // Plugin-local calls bind by argument name. The runtime stores function
+    // parameter names but matches incoming args by `name_idx`; positional
+    // args (name_idx == 0) are skipped. Always emit a named-arg object.
+    const paramNames = ctx.localFunctions.get(expr.name)!;
+
+    if (resolvedArgs.length === 0) {
+      argValue = [];
+    } else {
+      const obj: Record<string, MtpValue> = {};
+
+      for (let i = 0; i < resolvedArgs.length; i++) {
+        const name = paramNames[i] ?? `_arg${i}`;
+        obj[`$${name}`] = resolvedArgs[i]!;
+      }
+      
+      argValue = obj;
+    }
+  } else if (resolvedArgs.length === 0) {
     argValue = [];
   } else if (resolvedArgs.length === 1) {
     argValue = resolvedArgs[0]!;
@@ -285,7 +304,7 @@ function emitPipe(
   // Simple expressions need an explicit `set` to load into $_;
   // complex ones naturally target $_ when no `to` is specified.
   if (isSimpleExpr(expr.head)) {
-    actions.push(actionObj("set", exprToValue(expr.head, ctx)!));
+    actions.push(actionObj("set", { "$_": exprToValue(expr.head, ctx)! }));
   } else {
     actions.push(...exprToActions(expr.head, ctx));
   }
