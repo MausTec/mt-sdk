@@ -510,7 +510,7 @@ function validateExpr(
     }
 
     case "Call": {
-      validateCall(diags, symbols, expr.name, expr.args, expr.span, perms, false);
+      validateCall(diags, symbols, expr.name, expr.args, expr.span, perms);
 
       for (const arg of expr.args) {
         validateExpr(diags, symbols, ctx, arg, inPipe, perms);
@@ -522,25 +522,9 @@ function validateExpr(
       validateExpr(diags, symbols, ctx, expr.head, true, perms);
 
       for (const step of expr.steps) {
-        // Count explicit $_ appearances in the receiver's arg list
-        const accumulatorCount = step.call.args.filter(a => a.kind === "Accumulator").length;
-
-        if (accumulatorCount > 1) {
-          diags.push(langError(
-            "`$_` can only appear once in a pipe receiver's arguments",
-            step.call.span,
-          ));
-        }
-
-        // If the author placed $_ explicitly, all args are accounted for (no implicit).
-        // If no $_ appears, the pipe implicitly prepends one arg.
-        const hasExplicitAccumulator = accumulatorCount >= 1;
-        validateCall(diags, symbols, step.call.name, step.call.args, step.call.span, perms, !hasExplicitAccumulator);
-
-        for (const arg of step.call.args) {
-          validateExpr(diags, symbols, ctx, arg, true, perms);
-        }
+        validateExpr(diags, symbols, ctx, step.call, true, perms);
       }
+
       break;
 
     case "Binary":
@@ -577,7 +561,6 @@ function validateCall(
   args: readonly Expr[],
   span: Span,
   perms: Map<string, PermissionUsage[]>,
-  isPipeReceiver: boolean,
 ): void {
   const fn = symbols.resolveFunction(name);
 
@@ -590,16 +573,15 @@ function validateCall(
     return;
   }
 
-  // Pipe receivers get an implicit first argument (the accumulator value)
-  const effectiveArgCount = args.length + (isPipeReceiver ? 1 : 0);
+  const argCount = args.length;
 
   // Arg count validation
   if (fn.variadic) {
     // Variadic: must have at least the declared param count (note that our language does not currently document variadic host functions,
     // nor does it have a mechanism of supporting variadic plugin/module level functions.
-    if (effectiveArgCount < fn.params.length) {
+    if (argCount < fn.params.length) {
       diags.push(langError(
-        `\`${name}\` expects at least ${fn.params.length} argument${fn.params.length !== 1 ? "s" : ""} but was called with ${effectiveArgCount}`,
+        `\`${name}\` expects at least ${fn.params.length} argument${fn.params.length !== 1 ? "s" : ""} but was called with ${argCount}`,
         span,
       ));
     }
@@ -610,14 +592,14 @@ function validateCall(
       : fn.params.length;
     const maxCount = fn.params.length;
 
-    if (effectiveArgCount < requiredCount) {
+    if (argCount < requiredCount) {
       diags.push(langError(
-        `\`${name}\` expects ${requiredCount === maxCount ? String(requiredCount) : `${requiredCount}-${maxCount}`} argument${requiredCount !== 1 ? "s" : ""} but was called with ${effectiveArgCount}`,
+        `\`${name}\` expects ${requiredCount === maxCount ? String(requiredCount) : `${requiredCount}-${maxCount}`} argument${requiredCount !== 1 ? "s" : ""} but was called with ${argCount}`,
         span,
       ));
-    } else if (effectiveArgCount > maxCount) {
+    } else if (argCount > maxCount) {
       diags.push(langError(
-        `\`${name}\` expects ${requiredCount === maxCount ? String(maxCount) : `${requiredCount}-${maxCount}`} argument${maxCount !== 1 ? "s" : ""} but was called with ${effectiveArgCount}`,
+        `\`${name}\` expects ${requiredCount === maxCount ? String(maxCount) : `${requiredCount}-${maxCount}`} argument${maxCount !== 1 ? "s" : ""} but was called with ${argCount}`,
         span,
       ));
     }
