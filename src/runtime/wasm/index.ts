@@ -20,6 +20,7 @@ import type {
   EventResult,
   CallResult,
   HostCallContext,
+  RuntimeErrorKind,
 } from "../types.js";
 import {
   instantiateMtpCore,
@@ -32,6 +33,29 @@ import {
   runtimeValueToConfigValue,
   configValueToRuntimeValue,
 } from "./convert.js";
+
+/**
+ * Decode a runtime-error-kind ordinal (as emitted by the C side over WIT)
+ * into the stable underscore-form tag used by tooling. The ordering MUST
+ * match `mta_runtime_error_kind_t` in the WIT `runtime-error-kind` enum.
+ * 
+ * TODO: Delegate this to the mt-runtimes core when we're ready to push changes to MTR.
+ */
+const RUNTIME_ERROR_KINDS: readonly RuntimeErrorKind[] = [
+  "unknown",
+  "var_not_set",
+  "cycle_detected",
+  "missing_return",
+  "arg_count_mismatch",
+  "missing_arg",
+  "unknown_arg",
+  "type_mismatch",
+  "host_dispatch_failed",
+];
+
+function runtimeErrorKindFromOrdinal(ordinal: number): RuntimeErrorKind {
+  return RUNTIME_ERROR_KINDS[ordinal] ?? "unknown";
+}
 
 /**
  * Create a WasmEngine backed by the mtp:core Component Model bridge.
@@ -249,11 +273,19 @@ export class WasmEngine implements RuntimeEngine {
           "_",
         ) as TraceEvent["kind"];
 
+        // For `error` events, retCode is the mta_runtime_error_kind_t ordinal
+        // (matching the WIT runtime-error-kind enum order). Decode it so
+        // downstream consumers can pattern-match on a stable tag.
+        const detail: Record<string, unknown> = { result: retCode };
+        if (traceKind === "error") {
+          detail.errorKind = runtimeErrorKindFromOrdinal(retCode);
+        }
+
         const event: TraceEvent = {
           kind: traceKind,
           pluginId: slot,
           name: fnName,
-          detail: { result: retCode },
+          detail,
           timestamp: this.simulatedMs,
         };
 
@@ -261,12 +293,19 @@ export class WasmEngine implements RuntimeEngine {
       },
 
       // Called when the WASM runtime encounters an error.
+      //
+      // When the error originated from `mta_raise()`, errorCode is the
+      // mta_runtime_error_kind_t ordinal and fnName is the formatted message.
+      // We surface both the structured kind and the raw code so callers
+      // can pattern-match without losing information.
       errorReport: (slot, fnName, errorCode): void => {
+        const errorKind = runtimeErrorKindFromOrdinal(errorCode);
         this.reportError({
           code: errorCode,
-          message: `Runtime error in ${fnName}`,
+          message: fnName || `Runtime error (${errorKind})`,
           pluginId: slot,
           context: fnName,
+          errorKind,
         });
       },
     };

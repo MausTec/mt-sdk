@@ -86,6 +86,7 @@ export interface TraceEvent {
     | "cond_eval"
     | "loop_iter"
     | "note"
+    | "error"
     | "variable_set"
     | "variable_get"
     | "condition_eval"
@@ -107,6 +108,28 @@ export interface TraceEvent {
 export type TraceObserver = (event: TraceEvent) => void;
 
 /**
+ * Structured runtime error kinds, matching mta_runtime_error_kind_t /
+ * the WIT runtime-error-kind enum. These are executor-detected contract
+ * violations (distinct from the $! status codes a script can recover from).
+ *
+ * When `RuntimeError.code` carries one of these tags, the WASM runtime
+ * raised it via `mta_raise()`. Tooling can pattern-match on `errorKind`
+ * to surface user-actionable messages.
+ * 
+ * TODO: Evaluate moving this to mt-runtimes when we're ready to update the runtime container.
+ */
+export type RuntimeErrorKind =
+  | "unknown"
+  | "var_not_set"
+  | "cycle_detected"
+  | "missing_return"
+  | "arg_count_mismatch"
+  | "missing_arg"
+  | "unknown_arg"
+  | "type_mismatch"
+  | "host_dispatch_failed";
+
+/**
  * Fired when the WASM core encounters a runtime error.
  * Maps to mta_error_t codes from the C side.
  */
@@ -116,6 +139,8 @@ export interface RuntimeError {
   pluginId: number;
   /** Function or event that was executing when the error occurred. */
   context?: string | undefined;
+  /** Structured kind, when the error originated from `mta_raise()`. */
+  errorKind?: RuntimeErrorKind;
 }
 
 export type ErrorReporter = (error: RuntimeError) => void;

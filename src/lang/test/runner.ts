@@ -26,7 +26,12 @@
  */
 
 import type { ApiDescriptor } from "../../analysis/types.js";
-import type { HostFunction, Runtime, RuntimeValue } from "../../runtime/types.js";
+import type {
+  HostFunction,
+  Runtime,
+  RuntimeError,
+  RuntimeValue,
+} from "../../runtime/types.js";
 import { createRuntime } from "../../runtime/index.js";
 import { moduleNameToSlug } from "../emitter/plugin.js";
 import type {
@@ -314,6 +319,12 @@ async function runTestCase(
   // Collect call records per mock name.
   const callRecords = new Map<string, CallRecord[]>();
 
+  // Per-case buffer of runtime errors reported by the WASM core. These come
+  // from the C side via the error_report host callback (e.g. a builtin
+  // returning -1, an unresolved host function, etc.) and are otherwise
+  // swallowed silently.
+  const runtimeErrors: RuntimeError[] = [];
+
   // Create a fresh runtime for this test case.
   const hostFunctions = buildHostFunctions(mockRegistry, callRecords);
 
@@ -321,6 +332,13 @@ async function runTestCase(
     ...(config.manifest !== undefined ? { manifest: config.manifest } : {}),
     hostFunctions,
     tracing: config.tracing ?? false,
+    errorReporter: (err) => {
+      runtimeErrors.push(err);
+      dbg(
+        config.debug,
+        `case [${tc.label}]: runtime error code=${err.code} ctx=${err.context ?? "?"} msg=${err.message}`,
+      );
+    },
   });
   dbg(config.debug, `case [${describe?.label ?? "-"} > ${tc.label}]: runtime online`);
 
@@ -353,6 +371,7 @@ async function runTestCase(
         plugin,
         mockRegistry,
         callRecords,
+        runtimeErrors,
         makeGetGlobal,
         makeGetConfig,
         config.debug,
@@ -372,6 +391,7 @@ async function runTestCase(
         plugin,
         mockRegistry,
         callRecords,
+        runtimeErrors,
         makeGetGlobal,
         makeGetConfig,
         config.debug,
@@ -389,6 +409,7 @@ async function runTestCase(
         plugin,
         mockRegistry,
         callRecords,
+        runtimeErrors,
         makeGetGlobal,
         makeGetConfig,
         config.debug,
@@ -434,15 +455,43 @@ async function executeSteps(
   plugin: import("../../runtime/types.js").PluginHandle,
   mockRegistry: Map<string, MockDeclNode>,
   callRecords: Map<string, CallRecord[]>,
+  runtimeErrors: RuntimeError[],
   getGlobal: () => (name: string) => RuntimeValue | undefined,
   getConfig: () => (name: string) => RuntimeValue | undefined,
   debug?: boolean,
 ): Promise<TestFailure[]> {
   const failures: TestFailure[] = [];
 
+  // Snapshot the runtime-error buffer cursor at the start of each step. After
+  // a plugin-affecting step (Emit, CallTest, AssignGlobal, ConfigOverride)
+  // we drain newly reported errors and surface them as failures attached to
+  // the step that triggered them. Without this, errors from inside an event
+  // handler (e.g. a builtin returning -1, an unresolved host fn) would be
+  // silently swallowed and only manifest as downstream "ble_write was called
+  // 0 times" mismatches.
+  const drainRuntimeErrors = (
+    cursor: number,
+    stepIndex: number,
+    contextLabel: string,
+  ): void => {
+    while (cursor < runtimeErrors.length) {
+      const err = runtimeErrors[cursor++]!;
+
+      failures.push({
+        stepIndex,
+        message:
+          `runtime error during ${contextLabel}: ` +
+          `${err.message}${err.context ? ` (in ${err.context})` : ""} ` +
+          `[code=${err.code}]`,
+      });
+    }
+  };
+
   for (let i = 0; i < steps.length; i++) {
     const step: TestStep = steps[i]!;
     dbg(debug, `  step[${i}] ${step.kind}${describeStep(step)}`);
+
+    const errCursor = runtimeErrors.length;
 
     try {
       switch (step.kind) {
@@ -482,7 +531,25 @@ async function executeSteps(
           const firstArg = step.arg?.[0];
           const arg = firstArg !== undefined ? toEventArg(evalExpr(firstArg, env)) : 0;
 
-          runtime.fireEvent(plugin, step.event, arg);
+          const result = runtime.fireEvent(plugin, step.event, arg);
+
+          dbg(
+            debug,
+            `    -> fireEvent ${step.event} success=${result.success} errorCode=${result.errorCode}`,
+          );
+          // Drain anything the C side reported (per-action -1 returns,
+          // unresolved host fn calls, etc.) before deciding the step outcome.
+          drainRuntimeErrors(errCursor, i, `emit :${step.event}`);
+
+          if (!result.success) {
+            failures.push({
+              stepIndex: i,
+              message:
+                `emit :${step.event} did not complete successfully ` +
+                `(errorCode=${result.errorCode})`,
+            });
+          }
+
           break;
         }
 
@@ -490,7 +557,23 @@ async function executeSteps(
           const env = { getConfig: getConfig(), getGlobal: getGlobal() };
           const args = evalArgs(step.args, env);
 
-          runtime.callFunction(plugin, step.name, args);
+          const result = runtime.callFunction(plugin, step.name, args);
+
+          dbg(
+            debug,
+            `    -> callFunction ${step.name} success=${result.success} errorCode=${result.errorCode}`,
+          );
+
+          drainRuntimeErrors(errCursor, i, `call ${step.name}`);
+          if (!result.success) {
+            failures.push({
+              stepIndex: i,
+              message:
+                `call ${step.name} did not complete successfully ` +
+                `(errorCode=${result.errorCode})`,
+            });
+          }
+          
           break;
         }
 
