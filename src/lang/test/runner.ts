@@ -461,6 +461,18 @@ async function executeSteps(
 ): Promise<TestFailure[]> {
   const failures: TestFailure[] = [];
 
+  // The most recent `call` or `emit` accumulator, exposed to subsequent
+  // expressions in this step list via the `result` magic identifier. Resets
+  // to `undefined` per `executeSteps` invocation so each step list (file
+  // setup, describe setup, test body) starts with no carried result.
+  let lastResult: RuntimeValue | undefined = undefined;
+
+  const makeEnv = () => ({
+    getConfig: getConfig(),
+    getGlobal: getGlobal(),
+    getResult: () => lastResult,
+  });
+
   // Snapshot the runtime-error buffer cursor at the start of each step. After
   // a plugin-affecting step (Emit, CallTest, AssignGlobal, ConfigOverride)
   // we drain newly reported errors and surface them as failures attached to
@@ -518,7 +530,7 @@ async function executeSteps(
           // functions from the config module, a runtime common module. The proper
           // way to mock this would be to hook into the setConfig function for the 
           // runtime, or to re-load the plugin with a new config override.
-          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const env = makeEnv();
 
           for (const decl of step.declarations) {
             const value = evalExpr(decl.default, env);
@@ -529,7 +541,7 @@ async function executeSteps(
         }
 
         case "Emit": {
-          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const env = makeEnv();
 
           // Evaluate every event argument into a RuntimeValue and pass the
           // full positional list. The runtime binds them to the formal
@@ -546,7 +558,11 @@ async function executeSteps(
           // unresolved host fn calls, etc.) before deciding the step outcome.
           drainRuntimeErrors(errCursor, i, `emit :${step.event}`);
 
-          if (!result.success) {
+          if (result.success) {
+            // Expose the event handler's final $_ via `result` for downstream
+            // assert / expect / call argument expressions.
+            lastResult = result.accumulator;
+          } else {
             failures.push({
               stepIndex: i,
               message:
@@ -559,7 +575,7 @@ async function executeSteps(
         }
 
         case "CallTest": {
-          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const env = makeEnv();
           const args = evalArgs(step.args, env);
 
           const result = runtime.callFunction(plugin, step.name, args);
@@ -570,7 +586,11 @@ async function executeSteps(
           );
 
           drainRuntimeErrors(errCursor, i, `call ${step.name}`);
-          if (!result.success) {
+          if (result.success) {
+            // Expose the called function's return value (final $_) via
+            // `result` for downstream assert / expect / call argument exprs.
+            lastResult = result.accumulator;
+          } else {
             failures.push({
               stepIndex: i,
               message:
@@ -583,7 +603,7 @@ async function executeSteps(
         }
 
         case "AssignGlobal": {
-          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const env = makeEnv();
           const value = evalExpr(step.value, env);
 
           runtime.setGlobalValue(plugin, step.name, value);
@@ -591,7 +611,7 @@ async function executeSteps(
         }
 
         case "Assert": {
-          const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+          const env = makeEnv();
           const value = evalExpr(step.condition, env);
 
           if (!isTruthy(value)) {
@@ -606,7 +626,7 @@ async function executeSteps(
         }
 
         case "Expect": {
-          const failure = evaluateExpect(step, callRecords, getConfig, getGlobal, i);
+          const failure = evaluateExpect(step, callRecords, makeEnv, i);
           if (failure) failures.push(failure);
           break;
         }
@@ -633,15 +653,14 @@ async function executeSteps(
 function evaluateExpect(
   stmt: ExpectStmt,
   callRecords: Map<string, CallRecord[]>,
-  getConfig: () => (name: string) => RuntimeValue | undefined,
-  getGlobal: () => (name: string) => RuntimeValue | undefined,
+  makeEnv: () => import("./eval.js").EvalEnv,
   stepIndex: number,
 ): TestFailure | null {
   let records = callRecords.get(stmt.name) ?? [];
 
   // Filter by argument match if `with` args are specified.
   if (stmt.args !== null) {
-    const env = { getConfig: getConfig(), getGlobal: getGlobal() };
+    const env = makeEnv();
     const expected = evalArgs(stmt.args, env);
     records = records.filter((r) => argsMatch(r.args, expected));
   }

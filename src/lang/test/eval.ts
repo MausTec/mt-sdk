@@ -25,6 +25,13 @@ export interface EvalEnv {
   getGlobal?: (name: string) => RuntimeValue | undefined;
   /** Read a plugin config field by name. */
   getConfig?: (name: string) => RuntimeValue | undefined;
+  /**
+   * Read the accumulator value from the most recent `call` or `emit` step in the enclosing step list. 
+   * Returns `undefined` when no such step has executed yet. When this accessor is
+   * absent from the environment, `result` evaluation falls through to ordinary local
+   * lookup (e.g. mock bodies do not see SUT results).
+   */
+  getResult?: () => RuntimeValue | undefined;
 }
 
 // --- Error -------------------------------------------------------------------
@@ -48,6 +55,23 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
       return { type: varTypeToValueType(expr.varType), value: expr.value };
 
     case "Identifier": {
+      // `result` is a reserved magic identifier in test step contexts: it
+      // returns the accumulator from the most recent `call` or `emit`. It is
+      // only recognised when the environment provides a `getResult` accessor
+      // (i.e. inside step lists), so mock bodies and other non-step contexts
+      // can still use `result` as an ordinary identifier if ever needed.
+      if (expr.name === "result" && env.getResult !== undefined) {
+        const v = env.getResult();
+
+        if (v === undefined) {
+          throw new EvalError(
+            "`result` is only valid after a `call` or `emit` in the same step list",
+          );
+        }
+
+        return v;
+      }
+
       const v = env.locals?.get(expr.name);
 
       if (v === undefined) {
@@ -117,7 +141,7 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
     case "Call":
     case "Pipe":
       throw new EvalError(
-        `Expression kind '${expr.kind}' cannot be evaluated outside of a running plugin`,
+        `Expression kind '${expr.kind}' cannot be evaluated within a test context`,
       );
 
     default: {
