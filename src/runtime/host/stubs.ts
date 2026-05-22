@@ -44,12 +44,6 @@ export const defaultStubs: Record<string, HostFunction> = {
     value: ctx.simulatedMs,
   }),
 
-  // Config
-  get_system_config: makeStub({ type: "int", value: 0 }),
-  set_system_config: makeStub({ type: "bool", value: true }),
-  get_plugin_config: makeStub({ type: "int", value: 0 }),
-  set_plugin_config: makeStub({ type: "bool", value: true }),
-
   // BLE
   ble_write: makeStub({ type: "bool", value: true }),
   ble_write_no_response: makeStub({ type: "bool", value: true }),

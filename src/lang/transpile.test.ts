@@ -1688,7 +1688,7 @@ end`;
 // --- Phase B: config.name / meta.name / @attr metadata / PascalCase defplugin -
 
 describe("Phase B: config.name accessor", () => {
-  it("parses config.name and emits get_plugin_config action", () => {
+  it("parses config.name and emits get_config action", () => {
     const src = `
 defplugin "Test" do
   config do
@@ -1702,7 +1702,7 @@ end`;
     const plugin = transpileOk(src);
     const ramp = (plugin as any).functions.ramp;
     expect(ramp.actions).toEqual([
-      { get_plugin_config: "maxLevel" },
+      { get_config: "maxLevel" },
       { setLevel: "$_" },
     ]);
   });

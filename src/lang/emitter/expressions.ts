@@ -19,7 +19,7 @@ import type { BlockEmitContext } from "./context.js";
  * Subset of {@link Expr} that can be represented as a bare {@link MtpValue}.
  *
  * Notably excludes:
- * - ConfigRef  -- compiles to a `get_plugin_config` action, not a value
+ * - ConfigRef  -- compiles to a `get_config` action, not a value
  * - Binary, Unary, Call, Pipe, Index -- require action sequences
  */
 export type SimpleExpr =
@@ -136,7 +136,7 @@ export function exprToActions(
 
   switch (expr.kind) {
     case "ConfigRef":
-      return [withTarget(actionObj("get_plugin_config", expr.name), target)];
+      return [withTarget(actionObj("get_config", expr.name), target)];
 
     case "MetaRef":
       ctx.error(`Plugin metadata introspection (\`meta.${expr.name}\`) is not yet supported by the runtime`, expr.span);
