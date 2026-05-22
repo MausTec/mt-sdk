@@ -54,7 +54,6 @@ import {
   evalArgs,
   evalExpr,
   runtimeValuesEqual,
-  toEventArg,
 } from "./eval.js";
 
 // --- Diagnostic logging ------------------------------------------------------
@@ -513,6 +512,12 @@ async function executeSteps(
           // TODO: this sets the runtime variable namespace; whether the plugin
           // reads config fields as variables depends on the WASM ABI. A future
           // revision may need to use a dedicated setConfig API if one is added.
+          // NOTE: The assumption in this code is wrong. Config variables are only
+          // variables in the MTP side, but transpile down into a getConfig call
+          // in the runtime. getConfig / setConfig function calls in MTP are host
+          // functions from the config module, a runtime common module. The proper
+          // way to mock this would be to hook into the setConfig function for the 
+          // runtime, or to re-load the plugin with a new config override.
           const env = { getConfig: getConfig(), getGlobal: getGlobal() };
 
           for (const decl of step.declarations) {
@@ -526,12 +531,12 @@ async function executeSteps(
         case "Emit": {
           const env = { getConfig: getConfig(), getGlobal: getGlobal() };
 
-          // TODO: fireEvent currently accepts a single integer arg. When the
-          // runtime supports multi-arg events, pass the full evaluated list.
-          const firstArg = step.arg?.[0];
-          const arg = firstArg !== undefined ? toEventArg(evalExpr(firstArg, env)) : 0;
+          // Evaluate every event argument into a RuntimeValue and pass the
+          // full positional list. The runtime binds them to the formal
+          // parameters declared on the event definition.
+          const args = (step.arg ?? []).map((expr) => evalExpr(expr, env));
 
-          const result = runtime.fireEvent(plugin, step.event, arg);
+          const result = runtime.fireEvent(plugin, step.event, args);
 
           dbg(
             debug,

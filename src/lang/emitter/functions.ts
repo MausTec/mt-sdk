@@ -238,13 +238,15 @@ export function emitOnNode(
 
   ctx.diagnostics.push(...blockCtx.diagnostics);
 
+  const bindingNames = handler.bindings.map((b) => b.name);
+
   const result: MtpFunctionDefObject = {
     vars: [...vars, ...blockCtx.getTempVars()],
     actions,
   };
 
   if (handler.bindings.length > 0) {
-    result.args = handler.bindings.map((b) => b.name);
+    result.args = bindingNames;
   }
 
   return result;

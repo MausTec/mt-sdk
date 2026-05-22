@@ -136,26 +136,6 @@ export function evalArgs(exprs: Expr[], env: EvalEnv = {}): RuntimeValue[] {
 }
 
 /**
- * Coerce a `RuntimeValue` to a single integer for `runtime.fireEvent`.
- * Floats are truncated; bools become 1/0; strings are not valid event args
- * and throw.
- * 
- * TODO: In the future, event arguments may be typed and allow strings or other types
- */
-export function toEventArg(v: RuntimeValue): number {
-  switch (v.type) {
-    case "int":   return v.value as number;
-    case "float": return Math.trunc(v.value as number);
-    case "bool":  return (v.value as boolean) ? 1 : 0;
-    case "string":
-    case "bytes":
-      throw new EvalError(
-        `Cannot coerce ${v.type} value to an event argument integer`,
-      );
-  }
-}
-
-/**
  * Check whether two `RuntimeValue`s are equal for `expect ... with` argument matching.
  * Values of different types are never equal.
  */

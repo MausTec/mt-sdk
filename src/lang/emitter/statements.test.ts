@@ -45,7 +45,7 @@ describe("emitStatements", () => {
         arraySize: null, isConst: false, init: lit(42), span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$x": 42 } },
+        { set: [ "$x", 42 ] },
       ]);
     });
 
@@ -95,7 +95,7 @@ describe("emitStatements", () => {
         value: lit(99), span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$x": 99 } },
+        { set: [ "$x", 99 ] },
       ]);
     });
 
@@ -107,7 +107,7 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$x": "$counter" } },
+        { set: [ "$x", "$counter" ] },
       ]);
     });
 
@@ -146,7 +146,7 @@ describe("emitStatements", () => {
         value: lit(0), span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$counter": 0 } },
+        { set: [ "$counter", 0 ] },
       ]);
     });
 
@@ -604,7 +604,7 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$i": 1 } },
+        { set: [ "$i", 1 ] },
         { while: { lte: ["$i", 5], then: [{ tick: [] }, { inc: "$i" }] } },
       ]);
     });
@@ -621,7 +621,7 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$i": 10 } },
+        { set: [ "$i", 10 ] },
         { while: { gte: ["$i", 1], then: [{ tick: [] }, { dec: "$i" }] } },
       ]);
     });
@@ -644,7 +644,7 @@ describe("emitStatements", () => {
       const result = emitStatements(stmts, ctx);
 
       expect(result).toEqual([
-        { set: { "$i": "$lo" } },
+        { set: [ "$i", "$lo" ] },
         { if: { lte: ["$lo", "$hi"], then: [
           { while: { lte: ["$i", "$hi"], then: [{ tick: [] }, { inc: "$i" }] } },
         ], else: [
@@ -666,7 +666,7 @@ describe("emitStatements", () => {
         span: SPAN,
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
-        { set: { "$__t0": 0 } },
+        { set: [ "$__t0", 0 ] },
         { while: { lt: ["$__t0", 30], then: [
           { getbyte: ["$tape", "$__t0"], to: "$val" },
           { tick: [] },
@@ -689,7 +689,7 @@ describe("emitStatements", () => {
       }];
       expect(emitStatements(stmts, ctx)).toEqual([
         { strlen: "$greeting", to: "$__t0" },
-        { set: { "$__t1": 0 } },
+        { set: [ "$__t1", 0 ] },
         { while: { lt: ["$__t1", "$__t0"], then: [
           { charat: ["$greeting", "$__t1"], to: "$ch" },
           { tick: [] },

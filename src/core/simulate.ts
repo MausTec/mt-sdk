@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
 import { createRuntime } from "../runtime/index.js";
-import type { TraceEvent, RuntimeError, HostFunction } from "../runtime/index.js";
+import type { TraceEvent, RuntimeError, HostFunction, RuntimeValue } from "../runtime/index.js";
 import { getLatestApiDescriptor } from "@maustec/mt-runtimes";
 import type { ApiDescriptor } from "../analysis/types.js";
 
 export interface SimulateEvent {
   name: string;
-  /** Integer argument passed to the event. Default: 0. */
-  arg?: number;
+  /** Positional arguments bound to the event's formal parameters. Default: []. */
+  args?: RuntimeValue[];
 }
 
 export interface SimulateOptions {
@@ -27,7 +27,7 @@ export interface SimulateOptions {
 
 export interface EventOutcome {
   event: string;
-  arg: number;
+  args: RuntimeValue[];
   success: boolean;
   errorCode: number;
   accumulator?: { type: string; value: unknown };
@@ -70,12 +70,12 @@ export async function simulate(options: SimulateOptions): Promise<SimulationResu
   const outcomes: EventOutcome[] = [];
 
   for (const event of events) {
-    const arg = event.arg ?? 0;
-    const result = runtime.fireEvent(pluginHandle, event.name, arg);
-    
+    const args = event.args ?? [];
+    const result = runtime.fireEvent(pluginHandle, event.name, args);
+
     outcomes.push({
       event: event.name,
-      arg,
+      args,
       success: result.success,
       errorCode: result.errorCode,
       ...(result.accumulator

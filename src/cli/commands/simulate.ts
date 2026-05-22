@@ -163,7 +163,9 @@ async function simulate(
     const arg = args[i] ?? args[0] ?? 0;
 
     info(`Firing event: ${eventName}(${arg})`);
-    const result = runtime.fireEvent(plugin, eventName, arg);
+    const result = runtime.fireEvent(plugin, eventName, [
+      { type: "int", value: arg },
+    ]);
 
     if (result.success) {
       success(
