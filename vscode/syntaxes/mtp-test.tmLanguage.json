@@ -14,6 +14,7 @@
         { "include": "#call-stmt" },
         { "include": "#assert-stmt" },
         { "include": "#expect-stmt" },
+        { "include": "#result-var" },
         { "include": "source.mtp#fn-pure" },
         { "include": "source.mtp#fn-block" },
         { "include": "source.mtp#on-handler" },
@@ -122,6 +123,12 @@
             }
         },
 
+        "result-var": {
+            "comment": "result - magic identifier for the most recent `call` or `emit` accumulator (test-context reserved)",
+            "match": "\\b(result)\\b(?!\\s*[:=])",
+            "name": "variable.language.mtp"
+        },
+
         "expect-stmt": {
             "comment": "expect fn [not] called [with arg1, arg2] [op N times]",
             "begin": "\\b(expect)\\s+(\\w+)\\s+(not\\s+)?(called)\\b",
@@ -147,7 +154,8 @@
                 { "include": "source.mtp#number" },
                 { "include": "source.mtp#atom" },
                 { "include": "source.mtp#special-vars" },
-                { "include": "source.mtp#global-var" }
+                { "include": "source.mtp#global-var" },
+                { "include": "#result-var" }
             ]
         },
 
