@@ -327,7 +327,7 @@ end`;
     expect(fn).toBeDefined();
     const def = fn as { vars?: string[]; actions?: unknown[] };
     expect(def.vars).toContain("x");
-    expect(def.actions).toContainEqual({ set: { $x: 42 } });
+    expect(def.actions).toContainEqual({ set: ["$x", 42 ] });
   });
 
   it("emits a def with arguments", () => {
@@ -358,8 +358,8 @@ end`;
     const fn = plugin.functions?.["myFunc"];
     const def = fn as { vars?: string[]; actions?: unknown[] };
     expect(def.vars).toEqual(["x", "y"]);
-    expect(def.actions).toContainEqual({ set: { $x: 5 } });
-    expect(def.actions).toContainEqual({ set: { $y: 10 } });
+    expect(def.actions).toContainEqual({ set: ["$x", 5 ] });
+    expect(def.actions).toContainEqual({ set: ["$y", 10 ] });
   });
 });
 
@@ -375,7 +375,7 @@ end`;
     expect(plugin.events).toHaveProperty("motorChange");
     const handler = plugin.events?.["motorChange"] as { vars?: string[]; actions?: unknown[] };
     expect(handler.vars).toContain("level");
-    expect(handler.actions).toContainEqual({ set: { $level: 0 } });
+    expect(handler.actions).toContainEqual({ set: ["$level", 0 ] });
   });
 });
 
@@ -457,7 +457,7 @@ end`;
     expect(def.actions).toContainEqual({
       if: {
         gt: ["$x", 0],
-        then: [{ set: { $x: 10 } }]
+        then: [{ set: ["$x", 10 ] }]
       }
     });
   });
@@ -478,7 +478,7 @@ end`;
     expect(def.actions).toContainEqual({
       if: {
         lte: ["$x", 0],
-        then: [{ set: { $x: 10 } }]
+        then: [{ set: ["$x", 10 ] }]
       }
     });
   });
@@ -605,7 +605,7 @@ end`;
     const def = fn as { vars?: string[]; actions?: unknown[] };
     expect(def.vars).toContain("tape[100]");
     expect(def.vars).toContain("x");
-    expect(def.actions).toContainEqual({ set: { $x: 5 } });
+    expect(def.actions).toContainEqual({ set: ["$x", 5 ] });
     // No init action for tape - runtime zero-initializes arrays
     expect(def.actions?.some((a) =>
       typeof a === "object" && a !== null && "set" in a &&
@@ -829,7 +829,7 @@ end`;
     const fn = plugin.functions?.["myFunc"];
     const def = fn as { vars?: string[]; actions?: unknown[] };
     expect(def.vars).toContain("maxSpeed");
-    expect(def.actions).toContainEqual({ set: { $maxSpeed: 255 } });
+    expect(def.actions).toContainEqual({ set: ["$maxSpeed", 255 ] });
   });
 
   it("errors when reassigning a const variable", () => {
@@ -1308,7 +1308,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.countdown;
     expect(fn.actions).toEqual([
-      { set: { "$i": 10 } },
+      { set: [ "$i", 10 ] },
       { while: { gt: ["$i", 0], then: [{ dec: "$i" }] } },
     ]);
   });
@@ -1326,7 +1326,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.waitForZero;
     expect(fn.actions).toEqual([
-      { set: { "$x": 5 } },
+      { set: [ "$x", 5 ] },
       { while: { neq: ["$x", 0], then: [{ dec: "$x" }] } },
     ]);
   });
@@ -1348,7 +1348,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.step;
     expect(fn.actions).toEqual([
-      { set: { "$i": 0 } },
+      { set: [ "$i", 0 ] },
       { inc: "$i" },
     ]);
   });
@@ -1382,7 +1382,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.doubleIt;
     expect(fn.actions).toEqual([
-      { set: { "$x": 1 } },
+      { set: [ "$x", 1 ] },
       { mul: ["$x", 2], to: "$x" },
     ]);
   });
@@ -1404,7 +1404,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.drain;
     expect(fn.actions).toEqual([
-      { set: { "$n": 10 } },
+      { set: [ "$n", 10 ] },
       { while: { gt: ["$n", 0], then: [{ dec: "$n" }] } },
     ]);
   });
@@ -1420,7 +1420,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.fill;
     expect(fn.actions).toEqual([
-      { set: { "$i": 0 } },
+      { set: [ "$i", 0 ] },
       { while: { neq: ["$i", 10], then: [{ inc: "$i" }] } },
     ]);
   });
@@ -1444,7 +1444,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.countdown;
     expect(fn.actions).toEqual([
-      { set: { "$i": 10 } },
+      { set: [ "$i", 10 ] },
       { while: { gt: ["$i", 0], then: [{ dec: "$i" }] } },
     ]);
   });
@@ -1462,7 +1462,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.waitForZero;
     expect(fn.actions).toEqual([
-      { set: { "$x": 5 } },
+      { set: [ "$x", 5 ] },
       { while: { neq: ["$x", 0], then: [{ dec: "$x" }] } },
     ]);
   });
@@ -1484,7 +1484,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.step;
     expect(fn.actions).toEqual([
-      { set: { "$i": 0 } },
+      { set: [ "$i", 0 ] },
       { inc: "$i" },
     ]);
   });
@@ -1518,7 +1518,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.doubleIt;
     expect(fn.actions).toEqual([
-      { set: { "$x": 1 } },
+      { set: [ "$x", 1 ] },
       { mul: ["$x", 2], to: "$x" },
     ]);
   });
@@ -1540,7 +1540,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.drain;
     expect(fn.actions).toEqual([
-      { set: { "$n": 10 } },
+      { set: [ "$n", 10 ] },
       { while: { gt: ["$n", 0], then: [{ dec: "$n" }] } },
     ]);
   });
@@ -1556,7 +1556,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.fill;
     expect(fn.actions).toEqual([
-      { set: { "$i": 0 } },
+      { set: [ "$i", 0 ] },
       { while: { neq: ["$i", 10], then: [{ inc: "$i" }] } },
     ]);
   });
@@ -1579,8 +1579,8 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.fill;
     expect(fn.actions).toEqual([
-      { set: { "$i": 0 } },
-      { set: { "$i": 1 } },
+      { set: [ "$i", 0 ] },
+      { set: [ "$i", 1 ] },
       { while: { lte: ["$i", 5], then: [{ tick: [] }, { inc: "$i" }] } },
     ]);
   });
@@ -1598,8 +1598,8 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.countdown;
     expect(fn.actions).toEqual([
-      { set: { "$i": 0 } },
-      { set: { "$i": 10 } },
+      { set: [ "$i", 0 ] },
+      { set: [ "$i", 10 ] },
       { while: { gte: ["$i", 1], then: [{ tick: [] }, { dec: "$i" }] } },
     ]);
   });
@@ -1620,8 +1620,8 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.scan;
     expect(fn.actions).toEqual([
-      { set: { "$val": 0 } },
-      { set: { "$__t0": 0 } },
+      { set: [ "$val", 0 ] },
+      { set: [ "$__t0", 0 ] },
       { while: { lt: ["$__t0", 30], then: [
         { getbyte: ["$tape", "$__t0"], to: "$val" },
         { tick: [] },
@@ -1644,10 +1644,10 @@ end`;
     const plugin = transpileOk(src);
     const fn = (plugin as any).functions.scan;
     expect(fn.actions).toEqual([
-      { set: { "$msg": "hello" } },
-      { set: { "$ch": 0 } },
+      { set: [ "$msg", "hello" ] },
+      { set: [ "$ch", 0 ] },
       { strlen: "$msg", to: "$__t0" },
-      { set: { "$__t1": 0 } },
+      { set: [ "$__t1", 0 ] },
       { while: { lt: ["$__t1", "$__t0"], then: [
         { charat: ["$msg", "$__t1"], to: "$ch" },
         { tick: [] },
@@ -1928,7 +1928,7 @@ end`;
     const plugin = transpileOk(src);
     const fn = plugin.functions?.["myFunc"] as { vars?: string[]; actions?: unknown[] };
     expect(fn.vars).toContain("level");
-    expect(fn.actions).toContainEqual({ set: { "$_": "$speed" } });
+    expect(fn.actions).toContainEqual({ set: "$speed" });
     expect(fn.actions).toContainEqual({ round: "$_", to: "$level" });
   });
 
@@ -2008,7 +2008,9 @@ end
     expect(plugin!.events!.speed_change).toEqual({
       vars: ["level"],
       args: ["speed"],
-      actions: [{ set: { $level: "$speed" } }],
+      actions: [
+        { set: ["$level", "$speed" ] },
+      ],
     });
   });
 
@@ -2026,8 +2028,8 @@ end
       vars: ["s", "m"],
       args: ["speed", "mode"],
       actions: [
-        { set: { $s: "$speed" } },
-        { set: { $m: "$mode" } },
+        { set: ["$s", "$speed" ] },
+        { set: ["$m", "$mode" ] },
       ],
     });
   });
@@ -2043,7 +2045,7 @@ end
     expect(plugin!.events!).toHaveProperty("connect");
     expect(plugin!.events!.connect).toEqual({
       vars: ["x"],
-      actions: [{ set: { $x: 1 } }],
+      actions: [{ set: ["$x", 1 ] }],
     });
     // No args key when no bindings
     expect(plugin!.events!.connect).not.toHaveProperty("args");

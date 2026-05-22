@@ -307,7 +307,7 @@ describe("exprToActions", () => {
         ], span: SPAN,
       };
       expect(exprToActions(expr, ctx)).toEqual([
-        { "@mapSpeed": { $arg: "$speed" } },
+        { "@mapSpeed": "$speed" },
       ]);
     });
 
@@ -320,7 +320,7 @@ describe("exprToActions", () => {
         ], span: SPAN,
       };
       expect(exprToActions(expr, ctx, "$level")).toEqual([
-        { "@mapSpeed": { $arg: 128 }, to: "$level" },
+        { "@mapSpeed": 128, to: "$level" },
       ]);
     });
 
@@ -334,7 +334,7 @@ describe("exprToActions", () => {
         ], span: SPAN,
       };
       expect(exprToActions(expr, ctx, "$i")).toEqual([
-        { "@forward": { $from: "$i", $cmdlen: "$len" }, to: "$i" },
+        { "@forward": ["$i", "$len"], to: "$i" },
       ]);
     });
 
@@ -348,7 +348,7 @@ describe("exprToActions", () => {
       };
       expect(exprToActions(expr, ctx)).toEqual([
         { add: [1, 2] },
-        { "@scale": { $val: "$_" } },
+        { "@scale": "$_" },
       ]);
     });
 
@@ -388,7 +388,7 @@ describe("exprToActions", () => {
       expect(exprToActions(expr, ctx)).toEqual([
         { get_plugin_config: "x", to: "$__t0" },
         { get_plugin_config: "y" },
-        { "@blend": { $a: "$__t0", $b: "$_" } },
+        { "@blend": ["$__t0", "$_"] },
       ]);
     });
   });
@@ -417,7 +417,7 @@ describe("exprToActions", () => {
         span: SPAN,
       };
       expect(exprToActions(expr, ctx, "$result")).toEqual<any>([
-        { set: { "$_": 5 } },                           // head → $_
+        { set: 5 },                                     // head → $_ (single-arg form)
         { to_string: [] },                              // step 1 → $_
         { concat: ["prefix:", "$_"], to: "$result" },  // step 2 → target
       ]);
@@ -437,7 +437,7 @@ describe("exprToActions", () => {
         span: SPAN,
       };
       expect(exprToActions(expr, ctx, "$out")).toEqual([
-        { set: { "$_": "$val" } },       // head → $_
+        { set: "$val" },            // head → $_ (single-arg form)
         { round: [], to: "$out" },  // step → target
       ]);
     });

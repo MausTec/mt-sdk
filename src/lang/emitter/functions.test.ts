@@ -148,7 +148,7 @@ describe("emitDef", () => {
     const result = emitDef(ctx, def);
     expect(result.args).toEqual(["val", "msg"]);
     expect(result.vars).toEqual(["result"]);
-    expect(result.actions).toEqual([{ set: { $result: 0 } }]);
+    expect(result.actions).toEqual([{ set: ["$result", 0 ] }]);
   });
 
   it("emits returnType when present", () => {

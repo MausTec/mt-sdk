@@ -1,14 +1,12 @@
 /**
  * Trace collector.
  *
- * Accumulates TraceEvents emitted by the WASM engine's trace observer and
- * host function dispatch. Provides the data backing for Runtime.getTrace().
- *
- * The collector serves as both the TraceObserver callback and a queryable
- * store of events for the current session.
+ * Accumulates TraceEvents emitted by the WASM engine's trace observer.
+ * Host call/return events are emitted by the engine's hostDispatch path
+ * via the same observer, so this collector is the single sink.
  */
 
-import type { TraceEvent, TraceObserver, RuntimeValue, HostCallContext } from "./types.js";
+import type { TraceEvent, TraceObserver } from "./types.js";
 
 export class TraceCollector {
   private events: TraceEvent[] = [];
@@ -22,45 +20,6 @@ export class TraceCollector {
     return (event: TraceEvent) => {
       this.events.push(event);
     };
-  }
-
-  /**
-   * Record a host function call from the JS dispatch side.
-   * This captures calls that pass through the HostRegistry, complementing
-   * the WASM-side trace events.
-   */
-  recordHostCall(
-    pluginId: number,
-    name: string,
-    args: RuntimeValue[],
-    result: RuntimeValue | void,
-    context: HostCallContext,
-  ): void {
-    this.events.push({
-      kind: "host_call",
-      pluginId,
-      name,
-      detail: { args, result },
-      timestamp: context.simulatedMs,
-    });
-  }
-
-  /**
-   * Record a host function return.
-   */
-  recordHostReturn(
-    pluginId: number,
-    name: string,
-    result: RuntimeValue | void,
-    context: HostCallContext,
-  ): void {
-    this.events.push({
-      kind: "host_return",
-      pluginId,
-      name,
-      detail: { result },
-      timestamp: context.simulatedMs,
-    });
   }
 
   /**

@@ -27,5 +27,5 @@ export type {
   TestReporter,
 } from "./runner.js";
 
-export { evalExpr, evalArgs, runtimeValuesEqual, toEventArg, EvalError } from "./eval.js";
+export { evalExpr, evalArgs, runtimeValuesEqual, EvalError } from "./eval.js";
 export type { EvalEnv } from "./eval.js";

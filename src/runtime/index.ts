@@ -134,8 +134,12 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       return engine.loadPlugin(json);
     },
 
-    fireEvent(plugin: PluginHandle, event: string, arg: number): EventResult {
-      return engine.fireEvent(plugin, event, arg);
+    fireEvent(
+      plugin: PluginHandle,
+      event: string,
+      args: RuntimeValue[],
+    ): EventResult {
+      return engine.fireEvent(plugin, event, args);
     },
 
     callFunction(

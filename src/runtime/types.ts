@@ -5,6 +5,11 @@
  * WASM core. The WASM binary handles all plugin execution (parsing, builtins,
  * scoping, control flow). TypeScript handles host function dispatch, tracing,
  * error reporting, and plugin lifecycle management.
+ * 
+ * TODO: The separation of concerns is not yet complete. Many of these functions 
+ * interact with the WASM boundary in a way that should be handled by the mt-runtimes
+ * package directly. The Runtime module in mt-sdk should just wire up the runtime
+ * presented in mt-runtimes, not control how it works or implement its arg checker, etc.
  */
 
 import type { ApiDescriptor, HostFunctionDescriptor } from "../analysis/types.js";
@@ -48,11 +53,59 @@ export interface HostCallContext {
   pluginId: number;
   /** Current plugin config snapshot (read-only). */
   pluginConfig: Readonly<Record<string, unknown>>;
+
+  /**
+   * Raise a structured runtime error from inside a host function.
+   *
+   * Sugar for `throw new MtaError(kind, message)`, the wrapping
+   * `hostDispatch` translates the throw into a C-side `mta_raise()` call,
+   * setting the structured runtime error and unwinding the script.
+   */
+  raise(kind: RuntimeErrorKind, message: string): never;
+
+  /**
+   * Validate the call's arguments against a positional spec list.
+   *
+   * Mirrors `mta_read_args()`: enforces arg count, kind compatibility, and
+   * (for var-name) presence of the named binding. On any mismatch this
+   * throws an `MtaError` with the appropriate `RuntimeErrorKind` and a
+   * descriptive message; on success it returns the (still raw) argument
+   * values for convenience.
+   */
+  readArgs(specs: ArgSpec[]): RuntimeValue[];
+}
+
+/**
+ * Argument descriptor accepted by `HostCallContext.readArgs`.
+ *
+ * `kind` mirrors the `mta_arg_kind_t` C-side acceptance set:
+ *   - `int`      — accepts integer values only
+ *   - `float`    — accepts float values only
+ *   - `number`   — accepts integer or float
+ *   - `string`   — accepts string values
+ *   - `var-name` — accepts an unresolved variable reference (rare; for
+ *                  metaprogramming-style host functions)
+ *   - `any`      — accepts any non-null value
+ */
+export interface ArgSpec {
+  name: string;
+  kind: "int" | "float" | "number" | "string" | "var-name" | "any";
 }
 
 /**
  * A host function implementation provided by the JS side.
- * Return value is written to $_ in the calling scope.
+ *
+ * The return value is encoded back into the WASM scope by the bridge:
+ *   - `number` -> `mta_return_int` if `Number.isInteger`, else `mta_return_float`
+ *   - `string` -> `mta_return_string`
+ *   - `boolean` -> `mta_return_int` (0 / 1)
+ *   - `RuntimeValue` -> matching `mta_return_*` per `type` (use this when the
+ *     numeric heuristic is wrong, e.g. a `5.0` that should be a float)
+ *   - `void` / `undefined` -> `mta_return_void`
+ *
+ * Throw an `MtaError` (or call `ctx.raise(...)`) to translate into a
+ * C-side `mta_raise()` call. Other thrown errors surface as
+ * `RuntimeErrorKind = "unknown"`.
  */
 export type HostFunction = (
   args: RuntimeValue[],
@@ -128,6 +181,23 @@ export type RuntimeErrorKind =
   | "unknown_arg"
   | "type_mismatch"
   | "host_dispatch_failed";
+
+/**
+ * Thrown from inside a `HostFunction` (typically via `ctx.raise(kind, msg)`)
+ * to translate into a C-side `mta_raise()` call.
+ *
+ * The bridge's `hostDispatch` wrapper catches instances of this class and
+ * encodes them as `HostError` on the way back across the WIT boundary.
+ * Any other thrown value is wrapped as `RuntimeErrorKind = "unknown"`.
+ */
+export class MtaError extends Error {
+  readonly kind: RuntimeErrorKind;
+  constructor(kind: RuntimeErrorKind, message: string) {
+    super(message);
+    this.name = "MtaError";
+    this.kind = kind;
+  }
+}
 
 /**
  * Fired when the WASM core encounters a runtime error.
@@ -209,8 +279,12 @@ export interface RuntimeEngine {
   /** Load a plugin from its JSON representation. Returns an opaque handle. */
   loadPlugin(json: Record<string, unknown>): PluginHandle;
 
-  /** Fire a named event with an integer argument. */
-  fireEvent(plugin: PluginHandle, event: string, arg: number): EventResult;
+  /** Fire a named event with positional arguments bound to formal params. */
+  fireEvent(
+    plugin: PluginHandle,
+    event: string,
+    args: RuntimeValue[],
+  ): EventResult;
 
   /** Call a plugin-defined function by name. */
   callFunction(
@@ -303,8 +377,12 @@ export interface Runtime {
   /** Load a plugin JSON and return a handle for interacting with it. */
   loadPlugin(json: Record<string, unknown>): PluginHandle;
 
-  /** Fire an event on a loaded plugin. */
-  fireEvent(plugin: PluginHandle, event: string, arg: number): EventResult;
+  /** Fire an event on a loaded plugin with positional args. */
+  fireEvent(
+    plugin: PluginHandle,
+    event: string,
+    args: RuntimeValue[],
+  ): EventResult;
 
   /** Call a plugin-defined function. */
   callFunction(
