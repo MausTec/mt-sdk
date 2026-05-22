@@ -209,7 +209,7 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
   // Resolve API manifest. Defaults to EOM3K when neither an explicit
   // descriptor nor an explicit sku is supplied. Without a manifest, any
   // host function the plugin calls that isn't explicitly mocked will fail
-  // the action chain (e.g. `get_plugin_config`, `to_string`), preventing
+  // the action chain (e.g. `get_config`, `to_string`), preventing
   // downstream `expect` assertions from ever observing the calls they care
   // about. Matches the default behavior of `mt-sdk simulate`.
   let manifest: ApiDescriptor | undefined = options?.apiDescriptor;
