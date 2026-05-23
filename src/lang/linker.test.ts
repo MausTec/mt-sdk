@@ -265,7 +265,13 @@ defplugin "Test" do
     1 |> add($_, $_)
   end
 end`;
-    const errs = errors(src, CTX);
+
+    const { diagnostics } = parseSource(src);
+    
+    const errs = diagnostics
+      .filter((d) => d.level === "error")
+      .map((d) => d.message);
+
     expect(errs.some((e) => e.includes("$_") && e.includes("once"))).toBe(true);
   });
 

@@ -114,6 +114,10 @@ export interface ConfigOverrideNode {
 /**
  * `emit :event_name [with arg1, arg2]` event emitter: Fires a plugin event, optionally passing
  * the event payload arguments via `with`.
+ *
+ * On successful execution, the event handler's final `$_` value is exposed
+ * to subsequent steps in the same step list via the `result` magic
+ * identifier (see `AssertStmt`).
  */
 export interface EmitStmt {
   kind: "Emit";
@@ -125,6 +129,10 @@ export interface EmitStmt {
 
 /**
  * `call fn_name(arg, ...)` Explicit plugin function call: calls a plugin def/fn from test context.
+ *
+ * On successful execution, the called function's return value (its final
+ * `$_`) is exposed to subsequent steps in the same step list via the
+ * `result` magic identifier (see `AssertStmt`).
  */
 export interface CallTestStmt {
   kind: "CallTest";
@@ -150,6 +158,13 @@ export interface AssignGlobalStmt {
 
 /**
  * `assert expr` - assert that `expr` evaluates to truthy.
+ *
+ * Within the assert expression (and other test-step expressions such as
+ * `expect ... with` arguments, `$global =` values, and `call`/`emit`
+ * argument lists), the reserved identifier `result` resolves to the
+ * accumulator value (final `$_`) from the most recent `call` or `emit`
+ * step in the enclosing step list. Reading `result` before any such step
+ * has run produces an evaluation error.
  */
 export interface AssertStmt {
   kind: "Assert";

@@ -937,6 +937,25 @@ export class Parser {
           args = this.parseCallArgs();
         }
 
+        // Normalize: every pipe step receives the carried value as `$_`.
+        // If the author placed `$_` explicitly somewhere in the args, leave
+        // them alone. Otherwise, prepend a synthetic `$_` as the first arg.
+        // Multiple explicit `$_` references are an error.
+        const accumulatorCount = args.filter(a => a.kind === "Accumulator").length;
+
+        if (accumulatorCount > 1) {
+          this.diagnostics.push(
+            langError(
+              "`$_` can only appear once in a pipe receiver's arguments",
+              nameTok.span,
+            ),
+          );
+          
+        } else if (accumulatorCount === 0) {
+          const synthetic: AccumulatorExpr = { kind: "Accumulator", span: nameTok.span };
+          args = [synthetic, ...args];
+        }
+
         const callSpan = mergeSpan(nameTok.span, this.peekAhead(-1).span);
         const call: CallExpr = { kind: "Call", name: nameTok.value, args, span: callSpan };
         steps.push({ call, carriedType: "unknown" });

@@ -19,7 +19,7 @@ import type { BlockEmitContext } from "./context.js";
  * Subset of {@link Expr} that can be represented as a bare {@link MtpValue}.
  *
  * Notably excludes:
- * - ConfigRef  -- compiles to a `get_plugin_config` action, not a value
+ * - ConfigRef  -- compiles to a `get_config` action, not a value
  * - Binary, Unary, Call, Pipe, Index -- require action sequences
  */
 export type SimpleExpr =
@@ -136,7 +136,7 @@ export function exprToActions(
 
   switch (expr.kind) {
     case "ConfigRef":
-      return [withTarget(actionObj("get_plugin_config", expr.name), target)];
+      return [withTarget(actionObj("get_config", expr.name), target)];
 
     case "MetaRef":
       ctx.error(`Plugin metadata introspection (\`meta.${expr.name}\`) is not yet supported by the runtime`, expr.span);
@@ -251,6 +251,7 @@ function emitCall(
   }
 
   let argValue: MtpValue | MtpValue[];
+
   if (resolvedArgs.length === 0) {
     argValue = [];
   } else if (resolvedArgs.length === 1) {
@@ -282,8 +283,9 @@ function emitPipe(
   const actions: MtpAction[] = [];
 
   // Emit head, and the result must flow to $_ for the chain.
-  // Simple expressions need an explicit `set` to load into $_;
-  // complex ones naturally target $_ when no `to` is specified.
+  // Simple expressions use the single-arg `set` form, which lifts the value
+  // into the accumulator via mta_return_* (the same path complex expressions
+  // take implicitly when no `to` is specified).
   if (isSimpleExpr(expr.head)) {
     actions.push(actionObj("set", exprToValue(expr.head, ctx)!));
   } else {

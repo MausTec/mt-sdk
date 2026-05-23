@@ -18,7 +18,7 @@ describe("collectHostFunctionCalls", () => {
     const plugin = {
       events: {
         tick: {
-          actions: [{ set: { "$speed": { add: ["$speed", 1] } } }],
+          actions: [{ set: [ "$speed", { add: ["$speed", 1] } ] }],
         },
       },
     };
@@ -53,7 +53,7 @@ describe("collectHostFunctionCalls", () => {
     const plugin = {
       functions: {
         myFunc: {
-          actions: [{ set: { "$count": 0 } }, { log: "$count" }],
+          actions: [{ set: [ "$count", 0 ] }, { log: "$count" }],
         },
       },
     };

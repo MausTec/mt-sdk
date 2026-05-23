@@ -71,7 +71,7 @@ function emitLocalDecl(stmt: LocalDeclStmt, ctx: BlockEmitContext): MtpAction[] 
 /**
  * Assign `expr` to `target` (a `$`-prefixed variable name).
  *
- * - Simple value -> `{ "set": { "$name": value } }`
+ * - Simple value -> `{ "set": ["$name", value] }`
  * - Complex expression -> `exprToActions(expr, target)` which puts
  *   `to: "$name"` on the final action
  */
@@ -80,7 +80,7 @@ function emitAssign(target: string, expr: Expr, ctx: BlockEmitContext): MtpActio
 
   if (simple !== null) {
     const obj = Object.create(null) as MtpActionObject;
-    obj.set = { [target]: simple };
+    obj.set = [target, simple];
     return [obj];
   }
 
@@ -254,7 +254,7 @@ function emitForRange(
     const forward = startVal <= endVal;
 
     const initObj = Object.create(null) as MtpActionObject;
-    initObj.set = { [target]: startVal };
+    initObj.set = [target, startVal];
 
     const whileObj = Object.create(null) as MtpActionObject;
     const stepObj = Object.create(null) as MtpActionObject;
@@ -272,7 +272,7 @@ function emitForRange(
 
   // Dynamic direction: emit runtime check
   const initObj = Object.create(null) as MtpActionObject;
-  initObj.set = { [target]: startVal };
+  initObj.set = [target, startVal];
 
   const fwdStep = Object.create(null) as MtpActionObject;
   fwdStep.inc = target;
@@ -314,7 +314,7 @@ function emitForArray(
   const bodyActions = emitStatements(stmt.body, ctx);
 
   const initObj = Object.create(null) as MtpActionObject;
-  initObj.set = { [idxTemp]: 0 };
+  initObj.set = [idxTemp, 0];
 
   const getObj = Object.create(null) as MtpActionObject;
   getObj.getbyte = [arrRef, idxTemp];
@@ -358,7 +358,7 @@ function emitForString(
   lenObj.to = lenTemp;
 
   const initObj = Object.create(null) as MtpActionObject;
-  initObj.set = { [idxTemp]: 0 };
+  initObj.set = [idxTemp, 0];
 
   const charObj = Object.create(null) as MtpActionObject;
   charObj.charat = [strRef, idxTemp];

@@ -16,3 +16,16 @@ export type {
   ExpectStmt,
   TestASTNode,
 } from "./ast.js";
+
+export { runTests } from "./runner.js";
+export type {
+  TestRunConfig,
+  TestPlugin,
+  TestFailure,
+  TestCaseResult,
+  TestSuiteResult,
+  TestReporter,
+} from "./runner.js";
+
+export { evalExpr, evalArgs, runtimeValuesEqual, EvalError } from "./eval.js";
+export type { EvalEnv } from "./eval.js";
