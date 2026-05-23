@@ -43,16 +43,38 @@ export class EvalError extends Error {
   }
 }
 
+// --- Trace -------------------------------------------------------------------
+
+/**
+ * Result of `evalExprTraced`. Mirrors the evaluated AST so callers can
+ * inspect the value at every sub-expression without re-evaluating. Used by
+ * the assert failure formatter to print operand breakdowns.
+ *
+ * `children` is empty for leaves (literals, identifiers, globals, etc.) and
+ * holds one entry per evaluated child for composites (Binary/Unary).
+ */
+export interface EvalTrace {
+  expr: Expr;
+  value: RuntimeValue;
+  children: EvalTrace[];
+}
+
 // --- Public API --------------------------------------------------------------
 
 /**
- * Evaluate `expr` in the given environment and return a `RuntimeValue`.
+ * Evaluate `expr` in the given environment and return the result value plus
+ * a trace mirroring the evaluated sub-tree.
+ *
  * Throws `EvalError` for unsupported expression kinds or missing bindings.
  */
-export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
+export function evalExprTraced(expr: Expr, env: EvalEnv = {}): EvalTrace {
   switch (expr.kind) {
     case "Literal":
-      return { type: varTypeToValueType(expr.varType), value: expr.value };
+      return {
+        expr,
+        value: { type: varTypeToValueType(expr.varType), value: expr.value },
+        children: [],
+      };
 
     case "Identifier": {
       // `result` is a reserved magic identifier in test step contexts: it
@@ -69,7 +91,7 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
           );
         }
 
-        return v;
+        return { expr, value: v, children: [] };
       }
 
       const v = env.locals?.get(expr.name);
@@ -78,7 +100,7 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
         throw new EvalError(`Undefined identifier '${expr.name}' in test expression`);
       }
 
-      return v;
+      return { expr, value: v, children: [] };
     }
 
     case "GlobalVar": {
@@ -86,14 +108,14 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
 
       if (v === undefined) {
         // TODO: Document more resolution for this but keep the error brief, or add a second arg to EvalError for help:
-        // The runtime returned no value. Verify the variable is declared in the plugin's "variables" block (the name must match exactly, 
+        // The runtime returned no value. Verify the variable is declared in the plugin's "variables" block (the name must match exactly,
         // without the leading '$'), and that the plugin has fired at least one event so any pre-test setup has had a chance to assign it.
         throw new EvalError(
           `$${expr.name}: plugin global variable could not be read.`
         );
       }
 
-      return v;
+      return { expr, value: v, children: [] };
     }
 
     case "ConfigRef": {
@@ -105,33 +127,46 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
         );
       }
 
-      return v;
+      return { expr, value: v, children: [] };
     }
 
     case "Unary": {
-      const operand = evalExpr(expr.operand, env);
+      const operand = evalExprTraced(expr.operand, env);
 
       if (expr.op === "-") {
-        if (operand.type !== "int" && operand.type !== "float") {
+        if (operand.value.type !== "int" && operand.value.type !== "float") {
           throw new EvalError(
-            `Unary '-' requires a numeric operand, got '${operand.type}'`,
+            `Unary '-' requires a numeric operand, got '${operand.value.type}'`,
           );
         }
 
-        return { type: operand.type, value: -(operand.value as number) };
+        return {
+          expr,
+          value: { type: operand.value.type, value: -(operand.value.value as number) },
+          children: [operand],
+        };
       }
 
       if (expr.op === "not") {
-        return { type: "bool", value: !isTruthy(operand) };
+        return {
+          expr,
+          value: { type: "bool", value: !isTruthy(operand.value) },
+          children: [operand],
+        };
       }
 
       throw new EvalError(`Unsupported unary operator '${expr.op}'`);
     }
 
     case "Binary": {
-      const left = evalExpr(expr.left, env);
-      const right = evalExpr(expr.right, env);
-      return evalBinary(expr.op, left, right);
+      const left = evalExprTraced(expr.left, env);
+      const right = evalExprTraced(expr.right, env);
+      
+      return {
+        expr,
+        value: evalBinary(expr.op, left.value, right.value),
+        children: [left, right],
+      };
     }
 
     case "Accumulator":
@@ -150,6 +185,14 @@ export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
       throw new EvalError(`Unknown expression kind`);
     }
   }
+}
+
+/**
+ * Evaluate `expr` and return just the resulting `RuntimeValue`.
+ * Equivalent to `evalExprTraced(expr, env).value` without retaining the trace.
+ */
+export function evalExpr(expr: Expr, env: EvalEnv = {}): RuntimeValue {
+  return evalExprTraced(expr, env).value;
 }
 
 /**

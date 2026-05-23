@@ -127,15 +127,37 @@ function emitCaseAnnotation(
   const title = tc.kind === "error" ? `Test errored: ${label}` : `Test failed: ${label}`;
 
   const lines: string[] = [];
+  // Take location from the first failure that carries one; this becomes the
+  // inline annotation anchor in the file view.
+  const firstLoc = tc.failures.find((f) => f.sourceLoc)?.sourceLoc;
 
   for (const f of tc.failures) {
     lines.push(f.message);
+    if (f.sourceSnippet) {
+      for (const sl of f.sourceSnippet.split("\n")) lines.push(`  | ${sl}`);
+    }
     if (f.expected !== undefined) lines.push(`  expected: ${f.expected}`);
     if (f.received !== undefined) lines.push(`  received: ${f.received}`);
-    if (f.stepIndex >= 0)         lines.push(`  at step #${f.stepIndex}`);
+    if (f.details && f.details.length > 0) {
+      lines.push(`  details:`);
+      for (const d of f.details) lines.push(`    ${d}`);
+    }
+    if (f.sourceLoc) {
+      lines.push(`  at ${f.sourceLoc.line}:${f.sourceLoc.col}`);
+    } else if (f.stepIndex >= 0) {
+      lines.push(`  at step #${f.stepIndex}`);
+    }
   }
 
-  annotate("error", { ...(filePath ? { file: filePath } : {}), title }, lines.join("\n"));
+  annotate(
+    "error",
+    {
+      ...(filePath ? { file: filePath } : {}),
+      ...(firstLoc ? { line: firstLoc.line, col: firstLoc.col } : {}),
+      title,
+    },
+    lines.join("\n"),
+  );
 }
 
 function emitBuildAndParseAnnotations(result: TestResult, cwd: string): void {

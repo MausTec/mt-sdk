@@ -46,6 +46,12 @@ export interface DiscoveredTestFile {
   diagnostics: LangDiagnostic[];
   /** False when any error-level diagnostic is present. */
   ok: boolean;
+  /**
+   * Verbatim source text. Cached so the runner / reporters can render
+   * failure snippets without re-reading the file. `undefined` when the
+   * file could not be read.
+   */
+  source?: string;
 }
 
 /**
@@ -301,6 +307,13 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
   // Run all tests.
   const testAsts = runnableFiles.map((f) => f.ast!);
 
+  // Build a source-text lookup keyed by AST so the runner can attach source
+  // snippets to assert failure records.
+  const sources = new WeakMap<TestFileNode, string>();
+  for (const f of runnableFiles) {
+    if (f.ast && f.source !== undefined) sources.set(f.ast, f.source);
+  }
+
   // Wrap the caller-provided reporter so that streaming `onSuiteResult`
   // events carry the source filePath. We track which suite is in flight by
   // sequencing through `runnableFiles` in lockstep with `onSuiteStart`.
@@ -334,6 +347,7 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
   const suites = await runTests({
     tests: testAsts,
     plugins,
+    sources,
     config: {
       ...(manifest !== undefined ? { manifest } : {}),
       tracing: options?.tracing ?? false,
@@ -432,5 +446,6 @@ function parseDiscoveredFile(filePath: string, memberDir: string): DiscoveredTes
     ast: ok ? ast : null,
     diagnostics,
     ok,
+    source,
   };
 }

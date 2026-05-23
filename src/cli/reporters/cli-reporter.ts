@@ -144,6 +144,17 @@ function printFailures(collected: CollectedSuite[], cwd: string): void {
         console.log();
         console.log(`   ${red(CROSS)} ${f.message}`);
 
+        if (f.sourceLoc) {
+          const here = `${path}:${f.sourceLoc.line}:${f.sourceLoc.col}`;
+          console.log(`       ${dim("at")} ${gray(here)}`);
+        }
+
+        if (f.sourceSnippet) {
+          for (const line of f.sourceSnippet.split("\n")) {
+            console.log(`       ${dim("|")} ${line}`);
+          }
+        }
+
         if (f.expected !== undefined) {
           console.log(`       ${dim("expected:")} ${green(f.expected)}`);
         }
@@ -152,7 +163,14 @@ function printFailures(collected: CollectedSuite[], cwd: string): void {
           console.log(`       ${dim("received:")} ${red(f.received)}`);
         }
 
-        if (f.stepIndex >= 0) {
+        if (f.details && f.details.length > 0) {
+          console.log(`       ${dim("details:")}`);
+          for (const d of f.details) {
+            console.log(`         ${dim(d)}`);
+          }
+        }
+
+        if (f.stepIndex >= 0 && !f.sourceLoc) {
           console.log(`       ${dim(`at step #${f.stepIndex}`)}`);
         }
       }

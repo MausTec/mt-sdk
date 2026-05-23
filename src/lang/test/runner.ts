@@ -53,8 +53,15 @@ import {
   EvalError,
   evalArgs,
   evalExpr,
+  evalExprTraced,
   runtimeValuesEqual,
 } from "./eval.js";
+import {
+  deriveExpectedReceived,
+  extractSourceSnippet,
+  formatRuntimeValue,
+  formatTraceOperands,
+} from "./formatter.js";
 
 // --- Diagnostic logging ------------------------------------------------------
 
@@ -144,6 +151,21 @@ export interface TestFailure {
   expected?: string;
   /** What was actually observed, if applicable. */
   received?: string;
+  /**
+   * 1-based source location of the failing expression within the suite
+   * source file, when known. Populated for assert failures.
+   */
+  sourceLoc?: { line: number; col: number; endLine?: number; endCol?: number };
+  /**
+   * Verbatim slice of source text covered by `sourceLoc`. Multi-line snippets
+   * are joined with `\n`. Populated when the suite source is available.
+   */
+  sourceSnippet?: string;
+  /**
+   * Extra annotation lines for the failure (e.g. evaluated operand values
+   * from a traced assert eval). Rendered verbatim by reporters.
+   */
+  details?: string[];
 }
 
 /**
@@ -175,6 +197,11 @@ export interface TestSuiteResult {
    * direct callers of `runTests` may leave it undefined.
    */
   filePath?: string;
+  /**
+   * Verbatim source text of the `.test.mtp` file, when known. Cached so
+   * reporters can render snippets without re-reading the file.
+   */
+  source?: string;
   cases: TestCaseResult[];
   passed: number;
   failed: number;
@@ -213,8 +240,14 @@ export async function runTests(options: {
   plugins: TestPlugin[];
   config: TestRunConfig;
   reporter?: TestReporter;
+  /**
+   * Optional source-text lookup keyed by test file AST. Used to attach
+   * source snippets to assert failure records. When omitted, failures
+   * carry `sourceLoc` only and reporters render snippets-free output.
+   */
+  sources?: WeakMap<TestFileNode, string>;
 }): Promise<TestSuiteResult[]> {
-  const { tests, plugins, config, reporter } = options;
+  const { tests, plugins, config, reporter, sources } = options;
 
   const results: TestSuiteResult[] = [];
 
@@ -244,7 +277,8 @@ export async function runTests(options: {
     }
 
     dbg(config.debug, `match: resolved to plugin \`${match.json["name"]}\` (display=\`${match.json["display_name"] ?? ""}\`)`);
-    const result = await runTestSuite(ast, match.json, config, reporter);
+    const source = sources?.get(ast);
+    const result = await runTestSuite(ast, match.json, config, reporter, source);
     results.push(result);
   }
 
@@ -258,6 +292,7 @@ async function runTestSuite(
   pluginJson: Record<string, unknown>,
   config: TestRunConfig,
   reporter: TestReporter | undefined,
+  source: string | undefined,
 ): Promise<TestSuiteResult> {
   const suiteStart = performance.now();
   const cases = collectTestCases(ast);
@@ -269,7 +304,7 @@ async function runTestSuite(
   for (const { tc, describe } of cases) {
     reporter?.onCaseStart?.({ label: tc.label, describe: describe?.label ?? null });
 
-    const result = await runTestCase(tc, describe ?? null, ast, pluginJson, config);
+    const result = await runTestCase(tc, describe ?? null, ast, pluginJson, config, source);
 
     caseResults.push(result);
     reporter?.onCaseResult?.(result);
@@ -281,6 +316,7 @@ async function runTestSuite(
 
   const suiteResult: TestSuiteResult = {
     pluginRef: ast.pluginRef,
+    ...(source !== undefined ? { source } : {}),
     cases: caseResults,
     passed,
     failed,
@@ -300,6 +336,7 @@ async function runTestCase(
   ast: TestFileNode,
   pluginJson: Record<string, unknown>,
   config: TestRunConfig,
+  source: string | undefined,
 ): Promise<TestCaseResult> {
   const caseStart = performance.now();
   const failures: TestFailure[] = [];
@@ -374,6 +411,7 @@ async function runTestCase(
         makeGetGlobal,
         makeGetConfig,
         config.debug,
+        source,
       );
 
       failures.push(...setupFailures);
@@ -394,6 +432,7 @@ async function runTestCase(
         makeGetGlobal,
         makeGetConfig,
         config.debug,
+        source,
       );
 
       failures.push(...setupFailures);
@@ -412,6 +451,7 @@ async function runTestCase(
         makeGetGlobal,
         makeGetConfig,
         config.debug,
+        source,
       );
 
       failures.push(...stepFailures);
@@ -458,6 +498,7 @@ async function executeSteps(
   getGlobal: () => (name: string) => RuntimeValue | undefined,
   getConfig: () => (name: string) => RuntimeValue | undefined,
   debug?: boolean,
+  source?: string,
 ): Promise<TestFailure[]> {
   const failures: TestFailure[] = [];
 
@@ -612,13 +653,31 @@ async function executeSteps(
 
         case "Assert": {
           const env = makeEnv();
-          const value = evalExpr(step.condition, env);
+          const trace = evalExprTraced(step.condition, env);
 
-          if (!isTruthy(value)) {
+          if (!isTruthy(trace.value)) {
+            const span = step.condition.span;
+            
+            const sourceLoc = {
+              line: span.line,
+              col: span.col,
+              ...(span.endLine !== undefined ? { endLine: span.endLine } : {}),
+              ...(span.endCol !== undefined ? { endCol: span.endCol } : {}),
+            };
+
+            const snippet = extractSourceSnippet(source, sourceLoc);
+            const details = formatTraceOperands(trace);
+            const derived = deriveExpectedReceived(trace);
+            const received = derived?.received ?? formatRuntimeValue(trace.value);
+
             failures.push({
               stepIndex: i,
               message: `assert failed`,
-              received: `${value.value}`,
+              ...(derived ? { expected: derived.expected } : {}),
+              received,
+              sourceLoc,
+              ...(snippet !== undefined ? { sourceSnippet: snippet } : {}),
+              ...(details.length > 0 ? { details } : {}),
             });
           }
 
