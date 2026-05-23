@@ -2,7 +2,7 @@
     "name": "maus-tec-plugin-syntax",
     "displayName": "Maus-Tec Plugin Syntax",
     "description": "Language support for .mtp Maus-Tec plugin source files.",
-    "version": "1.0.1",
+    "version": "0.1.0",
     "publisher": "maus-tec",
     "license": "MIT",
     "engines": {
