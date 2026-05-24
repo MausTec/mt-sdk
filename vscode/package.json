@@ -24,7 +24,7 @@
         "watch": "npm run bundle:extension -- --watch & npm run bundle:server -- --watch",
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "package": "npm run build && vsce package --out build/maus-tec-plugin-syntax-$(node -p \"require('./package.json').version\").vsix",
-        "vscode:install": "npm run package && code --install-extension build/maus-tec-plugin-syntax-$(node -p \"require('./package.json').version\").vsix"
+        "vscode:install": "npm run package && code --install-extension build/maus-tec-plugin-syntax-$(node -p \"require('./package.json').version\").vsix --force"
     },
     "dependencies": {
         "vscode-languageclient": "^9.0.1"
