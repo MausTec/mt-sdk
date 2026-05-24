@@ -1,0 +1,14 @@
+# Generated output
+dist/
+.astro/
+
+# Dependencies
+node_modules/
+
+# Generated reference pages (re-created by `npm run generate`)
+src/content/docs/reference/builtins/
+src/content/docs/reference/devices/
+src/content/docs/reference/language/
+
+# Keep the guides
+!src/content/docs/guides/
