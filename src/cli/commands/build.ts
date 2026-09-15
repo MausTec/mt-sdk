@@ -4,12 +4,15 @@ import { Command } from "commander";
 import { info, warn, error, success, dim } from "../output.js";
 import { formatPluginJson, transpile } from "../../lang/index.js";
 import type { LangDiagnostic } from "../../lang/index.js";
+import { loadSdkConfig, isWorkspaceRoot } from "../../project/workspace.js";
 
 type ProjectType = "app" | "json-plugin" | "mtp-plugin" | "monorepo" | "unknown";
 
 function detectProjectType(dir: string): ProjectType {
-  // Monorepo: has mt-sdk.json in dir
-  if (existsSync(join(dir, "mt-sdk.json"))) return "monorepo";
+  // Monorepo: mt-sdk.json in dir with a `workspace` section. A `plugin`-only
+  // (or absent) section is a per-project override, not a workspace root.
+  const sdkConfig = loadSdkConfig(join(dir, "mt-sdk.json"));
+  if (sdkConfig && isWorkspaceRoot(sdkConfig)) return "monorepo";
 
   // App: has manifest.json in dir
   if (existsSync(join(dir, "manifest.json"))) return "app";

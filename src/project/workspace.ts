@@ -76,12 +76,12 @@ export const PROJECT_CONFIG_DEFAULTS = {
 
 // --- Raw mt-sdk.json shape (internal) --------------------------------------
 
-interface RawWorkspaceSection {
+export interface RawWorkspaceSection {
   members?: string[];
   strict?: boolean;
 }
 
-interface RawSdkConfig {
+export interface RawSdkConfig {
   workspace?: RawWorkspaceSection;
   plugin?: ProjectPluginConfig;
   strict?: boolean;
@@ -93,7 +93,7 @@ interface RawSdkConfig {
  * Load and parse an mt-sdk.json file. Returns null if the file does not exist. 
  * Throws if the file exists but cannot be parsed as JSON.
  */
-function loadSdkConfig(path: string): RawSdkConfig | null {
+export function loadSdkConfig(path: string): RawSdkConfig | null {
   if (!existsSync(path)) return null;
 
   try {
@@ -109,7 +109,7 @@ function loadSdkConfig(path: string): RawSdkConfig | null {
  * A file is a workspace root if it has a `workspace` section. A file with only a `plugin` section is a
  * per-project override, not a workspace root.
  */
-function isWorkspaceRoot(raw: RawSdkConfig): boolean {
+export function isWorkspaceRoot(raw: RawSdkConfig): boolean {
   return !!(raw.workspace);
 }
 

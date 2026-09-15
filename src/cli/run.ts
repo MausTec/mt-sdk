@@ -4,6 +4,7 @@ import { validateCommand } from "./commands/validate.js";
 import { buildCommand } from "./commands/build.js";
 import { simulateCommand } from "./commands/simulate.js";
 import { testCommand } from "./commands/test.js";
+import { initCommand } from "./commands/init.js";
 
 /**
  * Entry point for the mt-sdk CLI.
@@ -16,6 +17,7 @@ export async function run(): Promise<void> {
     .version(version, "-V, --version");
 
   program
+    .addCommand(initCommand)
     .addCommand(validateCommand)
     .addCommand(buildCommand)
     .addCommand(simulateCommand)
