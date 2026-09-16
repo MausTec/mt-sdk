@@ -176,6 +176,30 @@ function detectMemberKind(dir: string, projectConfig: ProjectPluginConfig | null
   return "unknown";
 }
 
+/**
+ * Best-effort project root for a single `.mtp` file: its own directory,
+ * unless an ancestor up to 2 levels up contains an `mt-sdk.json`, in which
+ * case that ancestor is treated as the (umbrella) project root instead.
+ *
+ * This does not validate the ancestor's `mt-sdk.json` shape (see `isWorkspaceRoot`), 
+ * it just uses its presence as a signal that the `.mtp` file lives inside a larger project.
+ */
+export function findProjectRoot(mtpFilePath: string): string {
+  const ownDir = dirname(resolve(mtpFilePath));
+  let dir = ownDir;
+
+  for (let i = 0; i < 2; i++) {
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached filesystem root
+
+    if (existsSync(join(parent, "mt-sdk.json"))) return parent;
+
+    dir = parent;
+  }
+
+  return ownDir;
+}
+
 // --- Glob expansion (single-level * only) ----------------------------------
 
 function expandDirGlob(base: string, pattern: string): string[] {

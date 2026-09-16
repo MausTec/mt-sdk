@@ -1,16 +1,34 @@
+import { readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { Command } from "commander";
-import { warn, dim, passMark, failMark } from "../output.js";
+import { warn, error, dim, passMark, failMark } from "../output.js";
 import { runProjectTests, discoverTests } from "../../core/test.js";
 import { createReporter, REPORTER_NAMES } from "../reporters/index.js";
+import type { ApiDescriptor } from "../../analysis/types.js";
 
 interface TestOptions {
   sku?:      string;
+  api?:      string;
   trace?:    boolean;
   debug?:    boolean;
   json?:     boolean;
   list?:     boolean;
   reporter?: string;
+}
+
+/**
+ * Load an explicit API manifest from disk, if `--api` was given.
+ * Returns `undefined` (rather than throwing) so callers can decide how to
+ * surface the error consistently with their own output mode.
+ */
+function loadApiOverride(path: string): ApiDescriptor | undefined {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as ApiDescriptor;
+  } catch (e) {
+    error(`Failed to parse API manifest: ${e instanceof Error ? e.message : String(e)}`);
+    process.exitCode = 1;
+    return undefined;
+  }
 }
 
 async function testListCmd(cwd: string, opts: TestOptions): Promise<void> {
@@ -39,9 +57,13 @@ async function testListCmd(cwd: string, opts: TestOptions): Promise<void> {
 }
 
 async function testJsonCmd(cwd: string, opts: TestOptions): Promise<void> {
+  const apiDescriptor = opts.api !== undefined ? loadApiOverride(opts.api) : undefined;
+  if (opts.api !== undefined && apiDescriptor === undefined) return;
+
   const result = await runProjectTests({
     cwd,
     ...(opts.sku !== undefined ? { sku: opts.sku } : {}),
+    ...(apiDescriptor !== undefined ? { apiDescriptor } : {}),
     ...(opts.trace !== undefined ? { tracing: opts.trace } : {}),
     ...(opts.debug !== undefined ? { debug: opts.debug } : {}),
   });
@@ -66,6 +88,9 @@ async function testCmd(
     return testJsonCmd(cwd, opts);
   }
 
+  const apiDescriptor = opts.api !== undefined ? loadApiOverride(opts.api) : undefined;
+  if (opts.api !== undefined && apiDescriptor === undefined) return;
+
   const reporter  = createReporter(opts.reporter);
   const startedAt = Date.now();
 
@@ -74,6 +99,7 @@ async function testCmd(
   const result = await runProjectTests({
     cwd,
     ...(opts.sku !== undefined ? { sku: opts.sku } : {}),
+    ...(apiDescriptor !== undefined ? { apiDescriptor } : {}),
     ...(opts.trace !== undefined ? { tracing: opts.trace } : {}),
     ...(opts.debug !== undefined ? { debug: opts.debug } : {}),
     reporter: reporter.testReporter,
@@ -88,6 +114,7 @@ export const testCommand = new Command("test")
   .description("Run .test.mtp test suites for the workspace")
   .argument("[path]", "working directory (default: cwd)")
   .option("--sku <sku>", "device SKU for resolving the host function manifest (e.g. EOM3K)")
+  .option("--api <file>", "path to a custom API manifest JSON, overrides --sku")
   .option("--trace", "capture per-test execution traces")
   .option("--debug", "emit step-by-step setup diagnostics to stderr")
   .option("--json", "output full results as JSON and suppress all other output")

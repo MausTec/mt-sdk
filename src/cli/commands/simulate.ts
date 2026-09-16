@@ -16,7 +16,7 @@ function loadPlugin(path: string): Record<string, unknown> {
 
   if (ext === ".mtp") {
     const source = readFileSync(path, "utf-8");
-    const result = transpile(source);
+    const result = transpile(source, { filePath: path });
 
     for (const d of result.diagnostics) {
       const loc = d.span ? `${path}:${d.span.line}:${d.span.col}` : path;

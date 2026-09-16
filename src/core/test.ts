@@ -12,12 +12,13 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { lexTest } from "../lang/lexer.js";
 import { parseTestFile } from "../lang/test/parser.js";
 import { runTests } from "../lang/test/runner.js";
 import { build } from "./build.js";
+import { parseSource, resolveASTBundle } from "../lang/index.js";
 
 import { discoverWorkspace, readProjectConfig, resolveProjectConfig } from "../project/workspace.js";
 import { getLatestApiDescriptor } from "@maustec/mt-runtimes";
@@ -278,7 +279,7 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
       continue;
     }
 
-    const buildResult = build({ source });
+    const buildResult = build({ source, filePath: srcPath });
 
     if (!buildResult.ok) {
       buildErrors.push({ memberDir, diagnostics: buildResult.diagnostics });
@@ -286,7 +287,25 @@ export async function runProjectTests(options?: TestOptions): Promise<TestResult
       continue;
     }
 
-    plugins.push({ json: buildResult.plugin as Record<string, unknown> });
+    // Resolve this member's own declared @platforms/@sdk_version (including
+    // `file:` overrides) so its tests execute against its own runtime
+    // contract instead of the single run-wide default below. Falls back to
+    // that default (via TestPlugin.manifest staying undefined) when the
+    // plugin declares neither field, or if re-resolution unexpectedly fails
+    // (already surfaced as a diagnostic by build() above in that case).
+    let memberManifest: ApiDescriptor | undefined;
+    try {
+      const { ast: pluginAst } = parseSource(source);
+      const memberBundle = resolveASTBundle(pluginAst, { baseDir: dirname(srcPath) });
+      memberManifest = memberBundle?.platformApi ?? undefined;
+    } catch {
+      // Fall back to the run's global manifest/sku default below.
+    }
+
+    plugins.push({
+      json: buildResult.plugin as Record<string, unknown>,
+      ...(memberManifest !== undefined ? { manifest: memberManifest } : {}),
+    });
   }
 
   // Filter out test files whose member failed to build.

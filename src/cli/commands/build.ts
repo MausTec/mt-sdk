@@ -78,7 +78,7 @@ function buildMtpFile(filePath: string, outputDest: string): void {
   info(`Transpiling ${label}...`);
 
   const source = readFileSync(filePath, "utf8");
-  const { plugin, diagnostics } = transpile(source);
+  const { plugin, diagnostics } = transpile(source, { filePath });
   const json = formatPluginJson(plugin);
 
   // Emit diagnostics

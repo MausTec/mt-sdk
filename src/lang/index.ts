@@ -72,10 +72,13 @@ export function emitPlugin(ast: PluginNode): { plugin: MtpPlugin; diagnostics: L
 /**
  * Parse `.mtp` source text, link against its declared runtime API,
  * and emit the JSON plugin schema in one step.
+ *
+ * `options.filePath`, when provided, is used to resolve relative `file:`
+ * platform entries and to warn if one resolves outside the project root.
  */
-export function transpile(source: string): TranspileResult {
+export function transpile(source: string, options?: { filePath?: string }): TranspileResult {
   const { ast, diagnostics: parseDiags } = parseSource(source);
-  const { diagnostics: linkDiags } = link(ast);
+  const { diagnostics: linkDiags } = link(ast, undefined, options);
   const { plugin, diagnostics: emitDiags } = emitPlugin(ast);
   return { plugin, diagnostics: [...parseDiags, ...linkDiags, ...emitDiags] };
 }

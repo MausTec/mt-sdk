@@ -12,6 +12,8 @@ import type {
 import { SymbolTable, type ResolvedFunction } from "./symbol-table.js";
 import { resolveRuntimeBundle, ResolutionError, parsePlatformEntry } from "@maustec/mt-runtimes";
 import type { RuntimeBundle } from "@maustec/mt-runtimes";
+import { dirname, relative, isAbsolute } from "node:path";
+import { findProjectRoot } from "../project/workspace.js";
 
 // --- Public types ------------------------------------------------------------
 
@@ -32,7 +34,10 @@ export type LinkerContext = RuntimeBundle;
  * Returns null when the AST has neither @sdk_version nor @platforms declared
  * (degraded mode — no catalog loaded).
  */
-export function resolveASTBundle(ast: PluginNode): RuntimeBundle | null {
+export function resolveASTBundle(
+  ast: PluginNode,
+  options?: { baseDir?: string },
+): RuntimeBundle | null {
   let sdkVersion: string | null = null;
   const platforms: string[] = [];
 
@@ -55,7 +60,11 @@ export function resolveASTBundle(ast: PluginNode): RuntimeBundle | null {
     return null;
   }
 
-  return resolveRuntimeBundle({ sdkVersion, platforms });
+  return resolveRuntimeBundle({
+    sdkVersion,
+    platforms,
+    ...(options?.baseDir !== undefined ? { baseDir: options.baseDir } : {}),
+  });
 }
 
 /** A usage site for a required permission. */
@@ -108,34 +117,39 @@ interface BodyContext {
  * are emitted as LangDiagnostics rather than thrown. Pass an explicit bundle to
  * override (useful in tests and for callers that have already resolved the bundle).
  */
-export function link(ast: PluginNode, bundle?: RuntimeBundle | null): LinkedResult {
+export function link(
+  ast: PluginNode,
+  bundle?: RuntimeBundle | null,
+  options?: { filePath?: string },
+): LinkedResult {
   const diagnostics: LangDiagnostic[] = [];
+
+  // Build a span map for @platforms entries up front -- used both to target
+  // resolution-error details below and to target the file-outside-project-
+  // root warning further down at the specific failing entry.
+  const platformEntrySpans = new Map<string, Span>();
+  let platformsFieldSpan: Span | undefined;
+
+  for (const field of ast.metadata) {
+    if (field.key === "platforms" && Array.isArray(field.value)) {
+      platformsFieldSpan = field.span;
+
+      for (const expr of field.value) {
+        if (expr.kind === "Literal" && typeof expr.value === "string") {
+          platformEntrySpans.set(expr.value, expr.span);
+        }
+      }
+    }
+  }
 
   // Auto-resolve the runtime bundle from AST metadata when not provided.
   let resolved: RuntimeBundle | null | undefined = bundle;
   if (resolved === undefined) {
     try {
-      resolved = resolveASTBundle(ast);
+      const baseDir = options?.filePath ? dirname(options.filePath) : undefined;
+      resolved = resolveASTBundle(ast, baseDir !== undefined ? { baseDir } : {});
     } catch (e) {
       if (e instanceof ResolutionError) {
-        // Build a span map: raw platform string -> its literal span in the AST.
-        // Used to target each error detail at the specific failing entry.
-        
-        const platformEntrySpans = new Map<string, Span>();
-        let platformsFieldSpan: Span | undefined;
-
-        for (const field of ast.metadata) {
-          if (field.key === "platforms" && Array.isArray(field.value)) {
-            platformsFieldSpan = field.span;
-
-            for (const expr of field.value) {
-              if (expr.kind === "Literal" && typeof expr.value === "string") {
-                platformEntrySpans.set(expr.value, expr.span);
-              }
-            }
-          }
-        }
-
         const fallbackSpan = platformsFieldSpan ?? ast.span;
 
         for (const detail of e.details) {
@@ -154,6 +168,31 @@ export function link(ast: PluginNode, bundle?: RuntimeBundle | null): LinkedResu
         }
       }
       // Continue with no bundle, warn against unknown items.
+    }
+  }
+
+  // Warn when a `file:` platform entry resolves outside the project root.
+  // Plugins may include a specific manifest for pre-release builds or alternative hardware, 
+  // but any `file:` outside the project root is considered a development build of exisitng
+  // hardware, and thus its inclusion in the plugin should be treated with caution.
+  //
+  if (options?.filePath && resolved?.resolvedPlatforms) {
+    const projectRoot = findProjectRoot(options.filePath);
+
+    for (const platform of resolved.resolvedPlatforms) {
+      if (!platform.isFile || !platform.resolvedPath) continue;
+
+      const rel = relative(projectRoot, platform.resolvedPath);
+      const isOutside = rel.startsWith("..") || isAbsolute(rel);
+
+      if (isOutside) {
+        const span = platformEntrySpans.get(platform.identifier) ?? platformsFieldSpan ?? ast.span;
+
+        diagnostics.push(langWarning(
+          `Platform entry "${platform.identifier}" resolves outside the project root (${projectRoot}).`,
+          span,
+        ));
+      }
     }
   }
 

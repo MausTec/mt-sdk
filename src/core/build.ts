@@ -5,6 +5,12 @@ import type { MtpPlugin } from "./mtp-types.js";
 export interface BuildOptions {
   /** Raw .mtp source text. */
   source: string;
+  /**
+   * Absolute path to the source `.mtp` file, if known. Used to resolve
+   * relative `file:` platform entries and other internal uses.
+   * Future TODO: $__FILE__ token etc.
+   */
+  filePath?: string;
 }
 
 export interface BuildResult {
@@ -21,7 +27,10 @@ export interface BuildResult {
  * `ok` is false when any error-level diagnostic is present.
  */
 export function build(options: BuildOptions): BuildResult {
-  const { plugin, diagnostics } = transpile(options.source);
+  const { plugin, diagnostics } = transpile(
+    options.source,
+    options.filePath !== undefined ? { filePath: options.filePath } : undefined,
+  );
   const formattedJson = formatPluginJson(plugin);
   const ok = !diagnostics.some((d) => d.level === "error");
   

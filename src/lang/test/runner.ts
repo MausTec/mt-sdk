@@ -132,6 +132,14 @@ export interface TestRunConfig {
 export interface TestPlugin {
   /** Compiled plugin JSON specimen. The caller is responsible for loading or transpiling. */
   json: Record<string, unknown>;
+  /**
+   * This plugin's own resolved API manifest (from its `@platforms`/
+   * `@sdk_version`, including `file:` overrides), when the caller has one.
+   * Takes precedence over `TestRunConfig.manifest` for this plugin's suites,
+   * so each plugin's tests execute against its own declared runtime
+   * contract instead of a single manifest shared across the whole run.
+   */
+  manifest?: ApiDescriptor;
 }
 
 // --- Result types ------------------------------------------------------------
@@ -278,7 +286,13 @@ export async function runTests(options: {
 
     dbg(config.debug, `match: resolved to plugin \`${match.json["name"]}\` (display=\`${match.json["display_name"] ?? ""}\`)`);
     const source = sources?.get(ast);
-    const result = await runTestSuite(ast, match.json, config, reporter, source);
+
+    // A plugin's own resolved manifest (e.g. from a `file:` platform entry)
+    // takes precedence over the run-wide default for its suites.
+    const effectiveConfig: TestRunConfig =
+      match.manifest !== undefined ? { ...config, manifest: match.manifest } : config;
+
+    const result = await runTestSuite(ast, match.json, effectiveConfig, reporter, source);
     results.push(result);
   }
 

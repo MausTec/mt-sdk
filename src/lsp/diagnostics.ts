@@ -1,5 +1,6 @@
 import type { Connection, Diagnostic, Range } from "vscode-languageserver/node.js";
 import { DiagnosticSeverity } from "vscode-languageserver/node.js";
+import { fileURLToPath } from "node:url";
 import type { LangDiagnostic, Span } from "../lang/index.js";
 import type { DocumentStore } from "./document-store.js";
 import { link } from "../lang/linker.js";
@@ -38,8 +39,12 @@ export function publishDiagnostics(
   const diagnostics: Diagnostic[] = doc.parsed.diagnostics.map(toVSCodeDiagnostic);
 
   // Linker pass: symbol resolution, validation, and (when context is provided)
-  // permission analysis.
-  const { diagnostics: linkDiags } = link(doc.parsed.ast);
+  // permission analysis. filePath is derived from the document's own URI so
+  // relative `file:` platform entries resolve against the document's
+  // directory rather than the LSP server process's cwd (usually the
+  // workspace root, not the plugin's own location).
+  const filePath = uri.startsWith("file://") ? fileURLToPath(uri) : undefined;
+  const { diagnostics: linkDiags } = link(doc.parsed.ast, undefined, filePath ? { filePath } : undefined);
 
   for (const d of linkDiags) {
     diagnostics.push(toVSCodeDiagnostic(d));

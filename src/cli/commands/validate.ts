@@ -176,7 +176,7 @@ async function doValidate(paths: string[], opts: { api?: string; strict?: boolea
         continue;
       }
 
-      const result = transpile(source);
+      const result = transpile(source, { filePath: target.path });
       plugin = result.plugin as unknown as Record<string, unknown>;
       transpileDiags = result.diagnostics;
 
